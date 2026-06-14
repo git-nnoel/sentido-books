@@ -93,8 +93,11 @@ See plan §3.1. Top level under `src/sentido/`:
 - **B2 — running FastAPI app + admin auth + health endpoint.** Done.
   `main.py` factory + lifespan, `/v1/health`, `require_admin`
   dependency, exception handlers, CORS, and the `api` service in
-  docker-compose. After `docker compose up`, `curl http://localhost:8000/v1/health`
-  returns `{"status": "ok", "version": "1.0.0"}`.
-- **B3 — ingestion.** Next. Open Library client + Google Books fallback
-  + `POST /v1/admin/books/ingest`.
+  docker-compose.
+- **B3 — ingestion.** Done. `OpenLibraryClient`, ISBN normalization,
+  catalog DTOs, `find_or_create_author` + `create_book_from_normalized`
+  with slug-collision handling, `POST /v1/admin/books/ingest`. Google
+  Books fallback is deferred to Phase 1.
+- **B4 — generation.** Next. OpenAI synopsis + profile + embedding
+  pipeline; `POST /v1/admin/books/{id}/generate`.
 - See plan §9 for the rest of Phase 0.
