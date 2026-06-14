@@ -98,6 +98,15 @@ See plan §3.1. Top level under `src/sentido/`:
   catalog DTOs, `find_or_create_author` + `create_book_from_normalized`
   with slug-collision handling, `POST /v1/admin/books/ingest`. Google
   Books fallback is deferred to Phase 1.
-- **B4 — generation.** Next. OpenAI synopsis + profile + embedding
-  pipeline; `POST /v1/admin/books/{id}/generate`.
+- **B4 — generation.** Done. Voice-locked prompts in
+  `generation/prompts.py` (mirror `docs/brand/voice.md §4`), pure
+  `parse_profile` + `compose_embedding_text` helpers, `OpenAIClient`
+  wrapper with the plan §7.1 retry policy, and `generate_artifacts`
+  service composing synopsis → emotional profile → embedding in a
+  single transaction. Exposed via `POST /v1/admin/books/{id}/generate`
+  (admin auth). Books land with `embedding_status='done'` and
+  `profile_status='pending'` for curator approval.
+- **B5 — publish + curator approval.** Next. `PUT /v1/admin/books/{id}`
+  with field-level validation; `POST /v1/admin/books/{id}/publish`
+  with the embedding/profile gates; public `GET /v1/books/{slug}`.
 - See plan §9 for the rest of Phase 0.
