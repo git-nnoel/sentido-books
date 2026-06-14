@@ -185,9 +185,22 @@ The single most important visual element in the product. Books are **posters**.
 ### 7.4 Fallback for missing covers
 When a book has no cover image, render an **embossed letter cover**:
 
-- Background: a deterministic gradient based on the book's first letter or slug hash. Use only colors from a **muted palette** (desaturated, low-luminance). Examples: deep green/black `linear-gradient(135deg, #1a2e1a 0%, #0a1410 100%)`, oxblood `linear-gradient(135deg, #2a1414 0%, #100808 100%)`, slate-blue `linear-gradient(135deg, #14202e 0%, #08101a 100%)`. The fallback palette must never include vivid color.
-- The first letter of the title rendered at `display-xl` size, in `--font-display` weight 300, color `rgba(255, 255, 255, 0.06)`, centered, slight blur (`filter: blur(0.5px)`) so it reads as embossed rather than printed.
-- The shadow treatment still applies.
+- **Background**: a deterministic gradient picked from the canonical 4-gradient palette by hashing the book's slug. Each value is desaturated, low-luminance, never vivid:
+
+  | Variant | Gradient |
+  |---|---|
+  | deep-green | `linear-gradient(135deg, #1a2e1a 0%, #0a1410 100%)` |
+  | oxblood | `linear-gradient(135deg, #2a1414 0%, #100808 100%)` |
+  | slate-blue | `linear-gradient(135deg, #14202e 0%, #08101a 100%)` |
+  | char-gray | `linear-gradient(135deg, #1c1a18 0%, #0c0a08 100%)` |
+
+  Adding a fifth variant or substituting one of these requires a brand decision. The four together cover the palette without competing with cover artwork in catalog grids.
+
+- **Letter**: the first alphabetic character of the title (uppercase), in `--font-display` weight 300, color `rgba(255, 255, 255, 0.06)`, centered, slight blur (`filter: blur(0.5px)`) so it reads as embossed rather than printed.
+
+  Sizing — the brand calls for `display-xl` size, but covers range from 64px (inline reference) to 480px (desktop hero). Use container-query height units (`font-size: 60cqh`) so the letter scales proportionally with the cover and keeps the same visual weight across sizes. The parent container needs `container-type: size`.
+
+- **Shadow**: the cover shadow from `foundations.md §5.1` still applies. The container's `bg-canvas` handles any letterboxing when an actual image is provided.
 
 The mockup shows this pattern for the related books at the bottom (`N`, `A`, etc.).
 
