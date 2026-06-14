@@ -1,11 +1,16 @@
 # Local-dev docker-compose for the Sentido backend.
 #
-# B1 (this task) ships only the `db` service. The `api` service is added
-# in B2. Postgres uses the pgvector/pgvector:pg16 image which bundles the
-# `vector` extension; `pgcrypto` ships with Postgres.
+# Brings up `db` (Postgres 16 + pgvector) and `api` (FastAPI/uvicorn
+# with --reload). Run from the `backend/` directory:
 #
-# Host port 5433 is used (instead of 5432) to avoid colliding with a
-# developer's locally-installed Postgres.
+#     docker compose -f docker/docker-compose.yml up -d
+#
+# Postgres uses the pgvector/pgvector:pg16 image which bundles the
+# `vector` extension; `pgcrypto` ships with Postgres core.
+#
+# Host port 5433 is used for Postgres (instead of 5432) to avoid
+# colliding with a developer's locally-installed Postgres. The API is
+# exposed on host port 8000.
 
 services:
   db:
@@ -25,6 +30,37 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: sentido_api
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      PYTHONPATH: /app/src
+    volumes:
+      # Hot-reload: bind-mount source + alembic so edits on the host
+      # take effect without a rebuild. Read-write is fine for dev.
+      - ../src:/app/src
+      - ../alembic:/app/alembic
+    ports:
+      - "8000:8000"
+    command:
+      [
+        "uvicorn",
+        "sentido.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
     restart: unless-stopped
 
 volumes:

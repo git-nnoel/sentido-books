@@ -58,5 +58,8 @@ COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
 COPY src /app/src
 
-# B1 stub entrypoint — the real CMD is set in B2.
-CMD ["python", "-c", "print('api stub — implementation lands in B2')"]
+EXPOSE 8000
+
+# Production-style entrypoint. The dev compose overrides this with
+# `--reload` so source-tree edits hot-reload (see docker-compose.yml).
+CMD ["uvicorn", "sentido.main:app", "--host", "0.0.0.0", "--port", "8000"]

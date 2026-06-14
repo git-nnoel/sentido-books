@@ -88,8 +88,13 @@ See plan §3.1. Top level under `src/sentido/`:
 
 ## Phase status
 
-- **B1 — infrastructure scaffold (this commit).** `pyproject.toml`,
-  module skeleton, ORM models, initial Alembic migration, Docker setup.
-  The api service does not yet run.
-- **B2 — running FastAPI app + admin auth + health endpoint.** Next.
+- **B1 — infrastructure scaffold.** `pyproject.toml`, module skeleton,
+  ORM models, initial Alembic migration, Docker setup. Done.
+- **B2 — running FastAPI app + admin auth + health endpoint.** Done.
+  `main.py` factory + lifespan, `/v1/health`, `require_admin`
+  dependency, exception handlers, CORS, and the `api` service in
+  docker-compose. After `docker compose up`, `curl http://localhost:8000/v1/health`
+  returns `{"status": "ok", "version": "1.0.0"}`.
+- **B3 — ingestion.** Next. Open Library client + Google Books fallback
+  + `POST /v1/admin/books/ingest`.
 - See plan §9 for the rest of Phase 0.
