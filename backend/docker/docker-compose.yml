@@ -1,0 +1,32 @@
+# Local-dev docker-compose for the Sentido backend.
+#
+# B1 (this task) ships only the `db` service. The `api` service is added
+# in B2. Postgres uses the pgvector/pgvector:pg16 image which bundles the
+# `vector` extension; `pgcrypto` ships with Postgres.
+#
+# Host port 5433 is used (instead of 5432) to avoid colliding with a
+# developer's locally-installed Postgres.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: sentido_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentido}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sentido}
+      POSTGRES_DB: ${POSTGRES_DB:-sentido}
+    ports:
+      - "5433:5432"
+    volumes:
+      - sentido_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentido} -d ${POSTGRES_DB:-sentido}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  sentido_pgdata:
+    name: sentido_pgdata
