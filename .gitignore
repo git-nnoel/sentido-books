@@ -1,3 +1,6 @@
+# Claude Code tooling metadata (per-agent memory; not project source)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -9,10 +12,11 @@ Thumbs.db
 *.swo
 *~
 
-# Env / secrets — never commit
+# Env / secrets — never commit. The negation lets *.example files through
+# so .env.example, .env.local.example, etc. remain trackable.
 .env
 .env.*
-!.env.example
+!*.example
 
 # Logs
 *.log

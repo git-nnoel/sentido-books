@@ -39,7 +39,7 @@ That's the whole product surface for v1. Resist scope creep.
 | Test (unit) | Vitest + React Testing Library | |
 | Test (e2e) | Playwright | Smoke flow only in v1 |
 | Linting | ESLint with `next/core-web-vitals`, Prettier | |
-| Package manager | `pnpm` | |
+| Package manager | `npm` | Default Node tooling; `package-lock.json` committed |
 | Deploy | Vercel | |
 
 No state library beyond TanStack Query. No Redux, no Zustand, no Jotai. Server components carry most state.
@@ -223,9 +223,11 @@ theme: {
     colors: {
       canvas: 'var(--bg-canvas)',
       elevated: 'var(--bg-elevated)',
+      overlay: 'var(--bg-overlay)',
       accent: { DEFAULT: 'var(--accent)', hover: 'var(--accent-hover)', dim: 'var(--accent-dim)' },
       text: { primary: 'var(--text-primary)', muted: 'var(--text-muted)', subtle: 'var(--text-subtle)' },
       divider: 'var(--divider)',
+      'focus-ring': 'var(--focus-ring)',
     },
     spacing: { /* 1..10 mapped from --space-* */ },
     maxWidth: { prose: 'var(--width-prose)', content: 'var(--width-content)', wide: 'var(--width-wide)', edge: 'var(--width-edge)' },
@@ -562,7 +564,7 @@ Goal: a working frontend skeleton with the brand system wired and one happy-path
 
 ### Deliverables
 
-- [ ] `pnpm create next-app` with App Router + TypeScript + Tailwind.
+- [ ] `npx create-next-app@14` with App Router + TypeScript + Tailwind + src dir + npm + manual ESLint setup.
 - [ ] `tailwind.config.ts` + `globals.css` wired with **all** tokens per §4.
 - [ ] `next/font` configured for Cormorant Garamond + Spectral; variables wired to CSS vars.
 - [ ] `lib/api/` client + Zod schemas for the endpoints used by Phase 0.
