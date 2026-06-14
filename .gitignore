@@ -1,0 +1,72 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Env / secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ───── Backend (Python) ─────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.python-version
+venv/
+.venv/
+env/
+
+# Alembic
+backend/alembic/versions/*.pyc
+
+# uv / pip-tools
+.pdm.toml
+
+# ───── Frontend (Node / Next.js) ─────
+node_modules/
+.next/
+out/
+.vercel/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# Package manager lockfiles other than the project's chosen one are
+# noise — keep only the one this project commits.
+
+# ───── Docker / local infra ─────
+*.local
+docker-data/
+pgdata/
+
+# ───── Test artifacts ─────
+coverage/
+playwright-report/
+test-results/
