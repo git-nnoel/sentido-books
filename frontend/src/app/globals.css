@@ -58,3 +58,14 @@ html {
 body {
   font-family: var(--font-body);
 }
+
+@layer components {
+  /* The only shadow in the system — book covers, per brand/foundations.md §5.1.
+     Dark layer gives the poster its weight; faint gold layer is the room's
+     ambient bounce light on the cover. */
+  .shadow-cover {
+    box-shadow:
+      0 24px 48px -12px rgba(0, 0, 0, 0.6),
+      0 8px 24px -8px rgba(201, 169, 110, 0.08);
+  }
+}
