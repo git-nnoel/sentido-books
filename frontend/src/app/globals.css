@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* color — from brand/foundations.md §1.1 */
+  --bg-canvas: #0b0a08;
+  --bg-elevated: #14110d;
+  --bg-overlay: rgba(11, 10, 8, 0.85);
+  --accent: #c9a96e;
+  --accent-hover: #d7ba82;
+  --accent-dim: #8a7a5e;
+  --text-primary: #e8dfd2;
+  --text-muted: #8a7a5e;
+  --text-subtle: #4a4338;
+  --divider: rgba(201, 169, 110, 0.2);
+  --focus-ring: rgba(215, 186, 130, 0.45);
+
+  /* spacing — from brand/foundations.md §3 */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+  --space-9: 6rem; /* 96px */
+  --space-10: 8rem; /* 128px */
+
+  /* width — from brand/layout.md §2.1 (mirrored in frontend plan §4.1) */
+  --width-prose: 38rem;
+  --width-content: 42rem;
+  --width-wide: 64rem;
+  --width-edge: 90rem;
+
+  /* motion — from brand/foundations.md §4 */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 360ms;
+  --motion-glacial: 600ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-entry: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* radius — from brand/foundations.md §6 */
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-full: 9999px;
+}
+
+html {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: var(--font-body);
+}
