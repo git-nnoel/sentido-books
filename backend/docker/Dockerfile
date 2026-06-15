@@ -32,8 +32,13 @@ WORKDIR /build
 
 # Install from pyproject.toml. Switch to `pip install -r requirements.lock.txt`
 # once the lockfile is generated locally with pip-compile (see header comment).
+# `src/` is copied here because pyproject.toml declares `packages.find:
+# where = ["src"]` — setuptools needs the source present at install time to
+# discover the package. Once requirements.lock.txt exists this whole stage
+# can install dependencies directly without needing the source.
 COPY pyproject.toml /build/pyproject.toml
 COPY README.md /build/README.md
+COPY src /build/src
 RUN pip install --upgrade pip \
  && pip install /build
 
