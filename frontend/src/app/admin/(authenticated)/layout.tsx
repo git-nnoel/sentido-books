@@ -11,6 +11,7 @@ import { Footer } from '@/components/layout/Footer';
 import { PageColumn } from '@/components/layout/PageColumn';
 import { LogoutButton } from '@/components/admin/LogoutButton';
 import { requireAdminToken } from '@/lib/auth/guard';
+import { AdminNav } from './AdminNav';
 
 export const metadata = {
   robots: { index: false, follow: false },
@@ -29,7 +30,8 @@ export default function AdminAuthenticatedLayout({ children }: { children: React
 
       <main className="flex-1">
         <PageColumn width="wide" className="pt-7 md:pt-9 pb-8 md:pb-9">
-          <div className="flex justify-end">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <AdminNav />
             <LogoutButton />
           </div>
           <div className="mt-5">{children}</div>

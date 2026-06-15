@@ -185,22 +185,7 @@ export async function adminApiFetch<T>(
   options: FetchOptions,
   schema: ZodSchema<T>,
 ): Promise<T> {
-  // Lazy-import next/headers so module load works in any context; the actual
-  // call still hard-fails in client code because of `import 'server-only'` above.
-  const { cookies } = await import('next/headers');
-  const { ADMIN_COOKIE_NAME } = await import('@/lib/auth/cookies');
-
-  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
-  if (!token) {
-    // Missing cookie reaching this code path means a guard was bypassed. We
-    // surface as 401 so callers (server actions) can clear cookie + redirect.
-    throw new ApiError(401, 'unauthorized');
-  }
-
-  const headers: Record<string, string> = {
-    ...(options.headers as Record<string, string> | undefined),
-    Authorization: `Bearer ${token}`,
-  };
+  const { headers } = await adminAuthHeaders(options);
 
   return performFetch(
     path,
@@ -212,4 +197,68 @@ export async function adminApiFetch<T>(
     },
     schema,
   );
+}
+
+/**
+ * Admin helper for endpoints that return `204 No Content` (no response body
+ * to validate) — e.g. DELETE /v1/admin/collections/{id}. Attaches the bearer
+ * token server-side, maps non-2xx to ApiError, and resolves to void without
+ * attempting to parse JSON. Calling adminApiFetch here would throw
+ * ApiContractError on the empty body.
+ */
+export async function adminApiFetchNoContent(
+  path: string,
+  options: FetchOptions,
+): Promise<void> {
+  const { headers } = await adminAuthHeaders(options);
+
+  const init: RequestInit & { next?: NextFetchRequestConfig } = {
+    method: options.method ?? 'GET',
+    headers: {
+      Accept: 'application/json',
+      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...headers,
+    },
+    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    cache: 'no-store',
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path), init);
+  } catch {
+    throw new ApiError(0, 'network failure');
+  }
+
+  if (!response.ok) {
+    const detail = await extractErrorDetail(response);
+    throw new ApiError(response.status, detail);
+  }
+  // 204 (or any 2xx) — nothing to parse. Discard the body.
+}
+
+/**
+ * Shared admin auth: reads the httpOnly cookie via next/headers and returns
+ * headers with the Bearer token attached. Throws ApiError(401) when the
+ * cookie is missing (a bypassed guard) so server actions can clear + redirect.
+ */
+async function adminAuthHeaders(
+  options: FetchOptions,
+): Promise<{ headers: Record<string, string> }> {
+  // Lazy-import next/headers so module load works in any context; the actual
+  // call still hard-fails in client code because of `import 'server-only'` above.
+  const { cookies } = await import('next/headers');
+  const { ADMIN_COOKIE_NAME } = await import('@/lib/auth/cookies');
+
+  const token = cookies().get(ADMIN_COOKIE_NAME)?.value;
+  if (!token) {
+    throw new ApiError(401, 'unauthorized');
+  }
+
+  return {
+    headers: {
+      ...(options.headers as Record<string, string> | undefined),
+      Authorization: `Bearer ${token}`,
+    },
+  };
 }
