@@ -4,6 +4,8 @@ import { BookCover } from '@/components/brand/BookCover';
 import { SectionLabel } from '@/components/brand/SectionLabel';
 import { HairlineDivider } from '@/components/brand/HairlineDivider';
 import { Button } from '@/components/brand/Button';
+import { PillChip } from '@/components/brand/PillChip';
+import { EmotionBar } from '@/components/brand/EmotionBar';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { PageColumn } from '@/components/layout/PageColumn';
@@ -181,6 +183,54 @@ export default function DevComponentsPage() {
         <SectionLabel>FOOTER</SectionLabel>
         <div className="mt-5 overflow-hidden rounded-sm border border-divider bg-canvas">
           <Footer />
+        </div>
+      </section>
+
+      <HairlineDivider />
+
+      {/* PillChip */}
+      <section className="mt-7">
+        <SectionLabel>PILLCHIP</SectionLabel>
+        <div className="mt-5 space-y-6">
+          <ShowcaseRow label="variant=static (tags em página de livro)">
+            <div className="flex flex-wrap gap-2">
+              <PillChip label="apatia" />
+              <PillChip label="absurdo" />
+              <PillChip label="sol como violência" />
+            </div>
+          </ShowcaseRow>
+          <ShowcaseRow label="variant=filter, idle">
+            <div className="flex flex-wrap gap-2">
+              <PillChip label="angústia" variant="filter" />
+              <PillChip label="melancolia" variant="filter" />
+              <PillChip label="esperança" variant="filter" />
+            </div>
+          </ShowcaseRow>
+          <ShowcaseRow label="variant=filter, active">
+            <div className="flex flex-wrap gap-2">
+              <PillChip label="angústia" variant="filter" active />
+              <PillChip label="melancolia" variant="filter" />
+            </div>
+          </ShowcaseRow>
+        </div>
+      </section>
+
+      <HairlineDivider />
+
+      {/* EmotionBar */}
+      <section className="mt-7">
+        <SectionLabel>EMOTIONBAR</SectionLabel>
+        <p className="mt-3 font-body text-body-sm text-text-muted lowercase max-w-prose">
+          a animação de reveal dispara uma vez quando o componente entra no viewport. respeita{' '}
+          prefers-reduced-motion.
+        </p>
+        <div className="mt-5 max-w-prose flex flex-col gap-3">
+          <EmotionBar label="angústia" value={6.0} />
+          <EmotionBar label="melancolia" value={4.0} />
+          <EmotionBar label="esperança" value={1.0} />
+          <EmotionBar label="violência" value={5.0} />
+          <EmotionBar label="ternura" value={1.0} />
+          <EmotionBar label="estranheza" value={8.5} />
         </div>
       </section>
 

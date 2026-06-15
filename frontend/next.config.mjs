@@ -9,6 +9,10 @@ const nextConfig = {
       { protocol: 'https', hostname: 'picsum.photos' },
       { protocol: 'https', hostname: 'covers.openlibrary.org' },
       { protocol: 'https', hostname: 'fastly.picsum.photos' },
+      // Google Books fallback covers when Open Library doesn't have the ISBN.
+      { protocol: 'http', hostname: 'books.google.com' },
+      { protocol: 'https', hostname: 'books.google.com' },
+      { protocol: 'https', hostname: 'books.googleusercontent.com' },
     ],
   },
 };
