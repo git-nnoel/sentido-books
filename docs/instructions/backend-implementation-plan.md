@@ -821,3 +821,262 @@ The backend specialist does not resolve these — they require orchestrator deci
 3. **Embedding regeneration semantics.** D2 says synopsis edits don't rebuild the embedding. If editorial decides synopsis is meaningful for retrieval, D2 changes — and Phase 2 reopens.
 
 When a Phase 2 question becomes load-bearing, the specialist reports back; the orchestrator amends this plan.
+
+---
+
+## 14. Phase 2b — Enrichment: Collections + Dimension navigation
+
+Goal: ship two discovery surfaces on top of the Phase 0/1 catalog.
+
+- **Part 1 — Collections**: curators create editorial lists ("Livros que ficam no corpo"); readers browse them at `/colecoes`.
+- **Part 2 — Dimension navigation**: readers explore the catalog by atmosphere tag, emotion axis, or narrative pace (PRD §4.3).
+
+The DB schema for collections (`collections` + `collection_books`) already exists from B1 — no new migrations.
+
+The backend specialist receives **one bundled task** (B7) covering all of Phase 2b because the three logical chunks (public collections, admin collections, dimension nav) share the same files (`catalog/service.py`, `catalog/routes.py`, `catalog/schemas.py`, `admin/*`). Bundling avoids merge collisions and lets the specialist plan the service layer holistically.
+
+**Status:** not started
+
+### 14.1 Part 1.1 — Public collections endpoints
+
+#### `GET /v1/collections` (public)
+
+Query params:
+- `limit` (int, 1–50, default 50)
+- `offset` (int, ≥0, default 0)
+
+Response 200:
+```json
+{
+  "collections": [
+    { "slug": "livros-que-ficam-no-corpo", "title": "Livros que ficam no corpo", "description": "…" }
+  ],
+  "total": 12
+}
+```
+
+Only `published=true` collections. Ordered by `updated_at DESC`.
+
+#### `GET /v1/collections/{slug}` (public)
+
+Response 200:
+```json
+{
+  "slug": "livros-que-ficam-no-corpo",
+  "title": "Livros que ficam no corpo",
+  "description": "…",
+  "books": [
+    { "slug": "…", "title": "…", "author_name": "…", "year_published": 1942, "cover_url": "…" }
+  ]
+}
+```
+
+Rules:
+- 404 `{"detail": "collection not found"}` if collection missing or `published=false`.
+- `books` only includes books with `published=true` (matches public-catalog filter).
+- Ordered by `collection_books.position ASC`.
+
+### 14.2 Part 1.2 — Admin collections CRUD
+
+All endpoints under `/v1/admin/collections/...`, gated by the existing `require_admin` dependency.
+
+#### `POST /v1/admin/collections`
+
+Request:
+```json
+{ "title": "…", "description": "…" }
+```
+
+Response 201: `AdminCollection`.
+
+`description` optional (nullable). Slug auto-generated from title via the existing `slugify`; collisions resolve via `-2`, `-3`, … up to `-50` (same pattern as books).
+
+#### `PUT /v1/admin/collections/{id}`
+
+Request (any subset; all-empty patch → 400):
+```json
+{ "title": "…", "description": "…", "published": true }
+```
+
+Response 200: `AdminCollection`.
+
+#### `DELETE /v1/admin/collections/{id}`
+
+Response 204. Cascades to `collection_books` (existing FK constraint).
+
+#### `GET /v1/admin/collections`
+
+Query params:
+- `status` (`published` | `draft` | `all`, default `all`)
+- `limit` (1–100, default 50)
+- `offset` (≥0, default 0)
+
+Response 200: `{ "collections": [AdminCollection], "total": int }`.
+
+#### `GET /v1/admin/collections/{id}`
+
+Response 200: full `AdminCollection` (loads ALL books in the collection — even unpublished, since curators need to see drafts during composition).
+
+#### `PUT /v1/admin/collections/{id}/books`
+
+Replace the ordered set of books in one call.
+
+Request:
+```json
+{ "book_ids": ["uuid1", "uuid2", "uuid3"] }
+```
+
+Response 200: refreshed `AdminCollection`.
+
+Implementation (one transaction):
+1. Validate every `book_id` exists in `books` table; 422 with the first missing id if not.
+2. `DELETE FROM collection_books WHERE collection_id = ?`
+3. `INSERT INTO collection_books (collection_id, book_id, position) VALUES (?, ?, idx)` for each id at its array index.
+
+This avoids per-position management. The curator UI sends the full ordered list on every save.
+
+### 14.3 Part 2 — Dimension navigation (public)
+
+Single multi-mode endpoint plus a tag-discovery endpoint.
+
+#### `GET /v1/explore`
+
+Query params:
+- `mode` (required): `tag` | `emotion` | `pace`
+- For `mode=tag`: `value` (required) — the atmosphere tag string
+- For `mode=emotion`: `axis` (required, one of `anguish|melancholy|hope|violence|tenderness|strangeness`); `min` (optional, float 0–10, default 0)
+- For `mode=pace`: `value` (required, one of `slow|progressive|frenetic`)
+- `limit` (1–50, default 20)
+- `offset` (≥0, default 0)
+
+Response 200:
+```json
+{
+  "mode": "tag",
+  "value": "apatia",
+  "results": [
+    { "slug": "…", "title": "…", "author_name": "…", "year_published": 1942, "cover_url": "…" }
+  ],
+  "total": 12
+}
+```
+
+Rules:
+- All modes filter `published=true`. **No embedding requirement** — these are structural filters on JSONB / TEXT[] columns.
+- Empty results (no matching books) → 200 with `results: []`. Not an error.
+- Ordering:
+  - `mode=tag`: `updated_at DESC`
+  - `mode=pace`: `updated_at DESC`
+  - `mode=emotion`: `(emotional_profile->>axis)::float DESC`, then `updated_at DESC` as tiebreak
+- 400 if `mode` is invalid or the required param for that mode is missing.
+
+#### `GET /v1/explore/tags`
+
+Response 200:
+```json
+{
+  "tags": [
+    { "name": "apatia", "count": 3 },
+    { "name": "sol como violência", "count": 2 }
+  ]
+}
+```
+
+Aggregate `unnest(atmosphere_tags)` over published books, group, count, order by count DESC then name ASC, limit 50. Used by the frontend `/explorar` landing page.
+
+### 14.4 Schemas — additions to `catalog/schemas.py`
+
+Public:
+- `CollectionSummary` — `{ slug, title, description (nullable) }`
+- `CollectionListResponse` — `{ collections, total }`
+- `CollectionDetail` — `CollectionSummary + { books: list[RelatedBook] }`
+- `ExploreResult` — same fields as `RelatedBook` (reuse the schema, alias if needed)
+- `ExploreResponse` — `{ mode, value, results, total }`
+- `AtmosphereTagEntry` — `{ name: str, count: int }`
+- `AtmosphereTagsResponse` — `{ tags: list[AtmosphereTagEntry] }`
+
+Admin (in `admin/schemas.py`):
+- `CollectionCreateRequest` — `{ title (min 1), description (nullable, default null) }`
+- `CollectionEditRequest` — partial `{ title, description, published }` with the empty-patch validator from `BookEditRequest`
+- `CollectionBooksReplaceRequest` — `{ book_ids: list[UUID] }` (min 0; an empty list clears the collection)
+- `AdminCollection`:
+  ```json
+  {
+    "id": "uuid",
+    "slug": "…",
+    "title": "…",
+    "description": "…",
+    "published": false,
+    "created_at": "…",
+    "updated_at": "…",
+    "books": [
+      { "id": "uuid", "slug": "…", "title": "…", "author_name": "…", "position": 0, "published": false }
+    ]
+  }
+  ```
+- `AdminCollectionListResponse` — `{ collections, total }`
+
+### 14.5 Service additions
+
+`catalog/service.py`:
+- `list_published_collections(session, limit, offset)`
+- `get_published_collection_by_slug(session, slug)` — joined query; filters books to `published=true`; orders by position
+- `create_collection(session, title, description)` — slugify + collision handling (mirror the book-slug pattern)
+- `update_collection(session, id, patch)`
+- `delete_collection(session, id)`
+- `list_admin_collections(session, status_filter, limit, offset)`
+- `get_collection_for_admin(session, id)` — includes all books regardless of publish state
+- `replace_collection_books(session, collection_id, book_ids)` — transactional
+- `explore_by_tag(session, tag, limit, offset)`
+- `explore_by_emotion(session, axis, min_score, limit, offset)`
+- `explore_by_pace(session, pace, limit, offset)`
+- `list_popular_atmosphere_tags(session, limit=50)`
+
+`admin/service.py`: thin passthrough wrappers for the seven collection ops.
+
+### 14.6 Routes
+
+`catalog/routes.py`:
+- `GET /v1/collections`
+- `GET /v1/collections/{slug}`
+- `GET /v1/explore`
+- `GET /v1/explore/tags`
+
+`admin/routes.py`:
+- `POST /collections` (full path `/v1/admin/collections`)
+- `PUT /collections/{collection_id}`
+- `DELETE /collections/{collection_id}` (returns 204)
+- `GET /collections`
+- `GET /collections/{collection_id}`
+- `PUT /collections/{collection_id}/books`
+
+### 14.7 Tests (light — MVP scope)
+
+One integration test file per concern:
+- `tests/integration/test_collections_public.py` — `/v1/collections` + `/v1/collections/{slug}` happy paths + 404
+- `tests/integration/test_admin_collections.py` — create + update + delete + list + replace-books happy paths + 401 gate
+- `tests/integration/test_explore.py` — one happy path per mode + the tags endpoint
+
+No new unit-logic tests required (no new pure logic — service-layer queries are the work).
+
+### 14.8 Out of scope for Phase 2b
+
+- `GET /v1/admin/books/{id}` (the F5 shim's Phase 2a follow-up) — not bundled here.
+- Wikipedia/Wikidata for author bios.
+- Combined-axis filtering (e.g. `anguish > 7 AND pace = slow`) — Phase 3.
+- Google Books fallback in ingestion.
+
+### 14.9 Decisions for Phase 2b
+
+#### D8 — Single multi-mode `/v1/explore` endpoint
+
+Three explore modes (tag/emotion/pace) live behind one endpoint with a `mode` discriminator instead of three separate routes. Rationale: shared response shape, shared pagination, single change site for future cross-mode features. Trade-off accepted: route handler has a `match mode:` dispatch.
+
+#### D9 — Collection book reorder via full-list replace
+
+`PUT /v1/admin/collections/{id}/books` accepts the full ordered list and replaces all `collection_books` rows in one transaction. Simpler than position deltas; matches the drag-and-drop UI's "save the order" mental model. Acceptable cost: O(n) write per save, where n is the collection size (max ~50 in practice).
+
+#### D10 — Unpublished books visible to admin in collection detail
+
+`GET /v1/admin/collections/{id}` returns ALL books in the collection — including unpublished ones — so the curator can see and reorder drafts. The public `/v1/collections/{slug}` filters those out. The frontend admin UI shows a status indicator next to each book so the curator knows what readers will see.
+

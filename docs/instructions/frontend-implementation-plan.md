@@ -694,3 +694,230 @@ The frontend specialist does not resolve these:
 3. **Logged-out admin UX for shared links** — what happens when a curator shares an `/admin/livro/{id}` URL with a colleague? Currently: they're redirected to login and back. That's fine; flagged in case it becomes annoying.
 
 When any of these becomes load-bearing, the specialist reports back; the orchestrator amends this plan and (if needed) the backend plan.
+
+---
+
+## 16. Phase 2b — Collections + Dimension navigation
+
+Mirrors the backend plan §14. Three frontend specialist tasks; sequenced because they share `lib/api/types.ts`.
+
+| Wave | Task | Owner | Depends on |
+|---|---|---|---|
+| 1 | F6 — public collections + types | frontend | Backend §14.1, §14.4 |
+| 2 | F7 — admin collections UI | frontend | F6 (types), Backend §14.2 |
+| 2 | F8 — public dimension navigation | frontend | F6 (types), Backend §14.3 |
+
+F7 and F8 run in parallel (disjoint files). F6 must finish first because it owns the `types.ts` schema additions both later tasks consume.
+
+**Status:** not started
+
+### 16.1 Header / footer nav (all three waves)
+
+The current Header has three disabled placeholder links (`catálogo`, `coleções`, `buscar`). After Phase 2b:
+- `coleções` → enabled link to `/colecoes` (in F6)
+- `buscar` → enabled link to `/buscar` (in F6 — Phase 1 shipped the route; the header still says "disabled")
+- New: `explorar` → `/explorar` (in F8)
+- `catálogo` stays disabled until/unless we add a catalog browse page (Phase 3)
+
+Footer placeholder links (`sobre`, `coleções`, `admin`):
+- `coleções` → `/colecoes` (F6)
+- `admin` → `/admin/login` (already works; just confirm)
+- `sobre` → leave as placeholder
+
+### 16.2 F6 — Public collections + dimension-nav types
+
+**Goal**: ship `/colecoes` and `/colecoes/{slug}`, add ALL the new Zod schemas Phase 2b needs to `lib/api/types.ts`, wire the header/footer collection links.
+
+#### Schemas to add (lib/api/types.ts)
+
+Public:
+- `CollectionSummarySchema` — already shipped in F3 placeholder; verify shape matches backend §14.1
+- `CollectionListResponseSchema` — `{ collections, total }`
+- `CollectionDetailSchema` — already shipped; verify
+- `ExploreResultSchema` — same shape as `RelatedBookSchema`; alias if useful
+- `ExploreResponseSchema` — `{ mode, value: string, results, total }`
+- `AtmosphereTagEntrySchema` — `{ name, count }`
+- `AtmosphereTagsResponseSchema` — `{ tags }`
+
+Admin (ship these even though F6 doesn't consume them, so F7 just imports):
+- `AdminCollectionBookSchema` — `{ id, slug, title, author_name, position, published }`
+- `AdminCollectionSchema` — `{ id, slug, title, description, published, created_at, updated_at, books }`
+- `AdminCollectionListResponseSchema` — `{ collections, total }`
+
+#### API client modules
+
+- `lib/api/collections.ts` (NEW) — `listCollections()`, `getCollectionBySlug(slug)`. Both server-side, ISR cache `revalidate: 300`.
+
+#### Public routes
+
+- `app/(public)/colecoes/page.tsx` — Server Component listing published collections.
+  - Header + PageColumn(width="content").
+  - Heading: `coleções` (display-lg italic accent lowercase) + subtitle `agrupamentos editoriais. um eco que atravessa vários livros.` (or similar one-liner in voice).
+  - List: each collection rendered as a clickable row with:
+    - SectionLabel-style date (`atualizado em ...` optional) — skip for v1, just title + description
+    - title (title-lg, accent, italic) as a `<Link>` to `/colecoes/{slug}`
+    - description (body-md, text-text-muted) — clamped to 2 lines
+    - hairline divider between rows
+  - Empty state: voice §3 copy (something like `nenhuma coleção publicada ainda`).
+  - Footer.
+
+- `app/(public)/colecoes/[slug]/page.tsx` — Server Component.
+  - 404 via `notFound()` on backend 404.
+  - Header + PageColumn(width="content").
+  - SectionLabel(`COLEÇÃO`)
+  - Title (display-lg).
+  - Description (body-lg max-w-prose).
+  - HairlineDivider.
+  - Books rendered as a column of BookCards (NOT a carousel — collections feel like an editorial reading list, not a horizontal scroll). Use the existing BookCard component. Stack vertically with gap-6; on `md` and above, switch to a 2-column grid for density.
+  - Footer.
+  - `generateMetadata` sets title from the collection.
+
+#### Header / footer updates
+
+- `components/layout/Header.tsx` — turn the `coleções` placeholder link into a real `<Link href="/colecoes">`. Turn `buscar` into `<Link href="/buscar">`. Leave `catálogo` disabled.
+- `components/layout/Footer.tsx` — wire `coleções` to `/colecoes`.
+
+### 16.3 F7 — Admin collections UI
+
+**Goal**: curators can create, edit, publish, delete, and reorder collections from the admin panel.
+
+#### API client
+
+- `lib/api/admin.ts` — add:
+  - `listAdminCollections(status, limit, offset)` (validates `AdminCollectionListResponseSchema`)
+  - `getAdminCollectionById(id)` — direct fetch of `GET /v1/admin/collections/{id}`. Use this for the edit page.
+  - `createCollection({ title, description })` → `AdminCollection`
+  - `updateCollection(id, patch)` → `AdminCollection`
+  - `deleteCollection(id)` → void (the backend returns 204; the client wrapper accepts an empty-body response)
+  - `replaceCollectionBooks(id, book_ids)` → `AdminCollection`
+
+#### Routes
+
+- `app/admin/(authenticated)/colecoes/page.tsx` — collections queue, mirroring the book queue's structure.
+  - Status tabs: published / draft / all (default `all`).
+  - Table with columns: título, status, livros (count), atualizado, ações (link to edit).
+  - Top-right: `+ nova coleção` ghost button → `/admin/colecoes/nova`.
+  - Empty state per voice.
+
+- `app/admin/(authenticated)/colecoes/nova/page.tsx` — create form.
+  - Single Client Component form with two fields: `título`, `descrição` (textarea).
+  - On submit: `createCollection(...)`. Server action handles 401 + redirect.
+  - On success: redirect to `/admin/colecoes/{id}` for the edit screen.
+
+- `app/admin/(authenticated)/colecoes/[id]/page.tsx` — edit screen.
+  - Server Component shell fetches via `getAdminCollectionById`.
+  - Renders three sections separated by `HairlineDivider`:
+    1. **Metadata form** (CollectionMetaForm.tsx, client) — title, description, published toggle, save button.
+    2. **Book list manager** (BookListEditor.tsx, client) — see below.
+    3. **Danger zone** — delete button with confirm dialog.
+
+#### Book list editor (the interesting part)
+
+A Client Component that owns local state for the ordered book array.
+
+UI:
+- A vertical list of the collection's current books, each with:
+  - Cover thumbnail (BookCover size="sm")
+  - Title + author
+  - Move up / Move down buttons (ghost Button variants)
+  - Remove button (text link "remover")
+- Below the list: an "add book" picker:
+  - Text input filtering against `listAdminBooks('all', 100, 0)` results (client-side filter by title substring — case-insensitive, accent-insensitive if practical)
+  - Results show as a max-8 row dropdown; click adds the book to the end of the list
+  - Books already in the collection are filtered out of the picker
+- Below the picker: a single primary button `salvar ordem` that calls `replaceCollectionBooks(id, ordered_ids)`.
+
+Local state model:
+- `selectedBooks: AdminCollectionBook[]` initialized from the prop
+- Move/remove/add mutate the array
+- Dirty flag tracked so the button shows "salvo" when nothing changed (or just always show; simpler)
+- On save success: replace local state with the response and revalidate the page
+
+No drag-and-drop library. Move up / Move down via buttons keeps deps minimal and accessibility easy.
+
+#### Server actions (`app/admin/(authenticated)/colecoes/[id]/actions.ts`)
+
+- `updateCollectionAction(id, formData)` — title/description/published
+- `deleteCollectionAction(id)` — calls API + redirects to `/admin/colecoes`
+- `replaceBooksAction(id, formData)` — formData carries the ordered `book_ids` (multiple values under same name)
+- All four follow the existing pattern: 401 → clear cookie + redirect; other errors → return `{ ok: false, error }`; success → `revalidatePath('/admin/colecoes/[id]', 'page')` + `revalidatePath('/admin/colecoes')` + `revalidatePath('/colecoes/[slug]', 'page')` (the public page changed too).
+
+#### Other admin pieces
+
+- Update the header in `app/admin/(authenticated)/layout.tsx` (or wherever the admin nav lives) so the admin can navigate between "livros" and "coleções". A small nav strip at the top of the admin area:
+  - `livros` → `/admin`
+  - `coleções` → `/admin/colecoes`
+  Active link styled accent; idle styled text-muted.
+
+### 16.4 F8 — Public dimension navigation
+
+**Goal**: ship the `/explorar` family. No admin counterpart — emotions/atmosphere/pace are catalog-wide, not curator-managed (the tag set is what the LLM emits).
+
+#### API client
+
+- `lib/api/explore.ts` (NEW) — server-side functions:
+  - `exploreByTag(tag: string, limit?: number, offset?: number): Promise<ExploreResponse>`
+  - `exploreByEmotion(axis: string, min?: number, limit?: number, offset?: number): Promise<ExploreResponse>`
+  - `exploreByPace(pace: NarrativePace, limit?: number, offset?: number): Promise<ExploreResponse>`
+  - `listAtmosphereTags(): Promise<AtmosphereTagsResponse>`
+  - All `cache: 'no-store'` for `/explore` (the tag set changes as new books land). The tags endpoint can be `next: { revalidate: 300 }`.
+
+#### Routes
+
+- `app/(public)/explorar/page.tsx` — landing.
+  - Header + PageColumn(width="content").
+  - Heading: `explorar` (display-lg italic accent lowercase).
+  - Three sections separated by HairlineDividers:
+    1. **por sentimento** — six `<Link>`s as styled tiles (or just text links), one per emotion axis, going to `/explorar/sentimento/{axis}`. PT-BR labels (angústia, melancolia, esperança, violência, ternura, estranheza).
+    2. **por atmosfera** — tag cloud. Render up to 50 tags from `listAtmosphereTags()` as PillChip-styled `<Link>`s to `/explorar/atmosfera/{tag}`. Size each chip proportionally to count (subtle — `body-sm` to `body-lg` based on tertiles).
+    3. **por ritmo** — three `<Link>`s to `/explorar/ritmo/{slow|progressive|frenetic}` with PT-BR labels (lento, progressivo, frenético).
+  - Footer.
+
+- `app/(public)/explorar/sentimento/[axis]/page.tsx` — Server Component.
+  - Validate `axis` against the six known values; `notFound()` if invalid.
+  - SectionLabel(`SENTIMENTO`), title with the PT-BR label.
+  - `exploreByEmotion(axis, min=0, limit=24)`.
+  - Render results as a grid of BookCards (same layout as `/buscar` for consistency).
+  - Empty state per voice.
+
+- `app/(public)/explorar/atmosfera/[tag]/page.tsx` — same structure for tags.
+
+- `app/(public)/explorar/ritmo/[pace]/page.tsx` — same structure for paces (validate against the three known values).
+
+All three results pages support pagination via `?p={n}` query param if the user wants to browse past 24 results. For MVP, ship without pagination UI — just the first 24 — and add `?p=` handling in a later pass if catalogs grow.
+
+#### Header link
+
+- `Header.tsx` — turn the `explorar` link from a planned addition into a real `<Link href="/explorar">`. (If not already present, add it next to the `coleções` and `buscar` links wired in F6.)
+
+### 16.5 Out of scope for Phase 2b
+
+- Combined-axis filtering (e.g. `angústia > 8 AND ritmo = lento`).
+- Authoring atmosphere tags manually in admin (the LLM is the source).
+- Vitest harness — still deferred.
+- `lucide-react` icons.
+- Pagination UI on explore/buscar/colecoes pages.
+
+### 16.6 Decisions for Phase 2b
+
+#### F8 — Three frontend specialists, two waves
+
+F6 owns `lib/api/types.ts` additions for the whole phase; F7 and F8 just consume them. This avoids three concurrent specialists editing the same schemas file. F7 + F8 are then file-disjoint and run in parallel.
+
+#### F9 — Move-up/down buttons over drag-and-drop
+
+The book-list reorder uses pairs of ghost-styled `<Button>`s instead of a drag-and-drop library. Reasons:
+- No new dependency.
+- Keyboard-accessible without extra work.
+- The curator's collection size is small (typically < 30 books); button-based reordering is fast enough.
+
+If a future curator workflow needs faster reordering of large lists, `dnd-kit` is the next step.
+
+#### F10 — Replace-the-list semantics for book ordering
+
+`replaceCollectionBooks(id, book_ids)` matches the backend's transactional replace (D9). The frontend's editor always sends the complete ordered list on save. Local state holds the working copy; the save button commits the whole thing.
+
+#### F11 — Admin nav strip
+
+A small strip at the top of `/admin/*` pages with `livros` + `coleções` tabs. Lives in the authenticated admin layout, not a new component file (keep it inline). Active state styled accent.
+
