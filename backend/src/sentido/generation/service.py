@@ -28,6 +28,8 @@ from sentido.generation.clients import (
     EMOTIONAL_PROFILE_RESPONSE_FORMAT,
     EMOTIONAL_PROFILE_TEMPERATURE,
     GENERATION_MODEL,
+    RESONANCE_LINE_MAX_TOKENS,
+    RESONANCE_LINE_TEMPERATURE,
     SYNOPSIS_MAX_TOKENS,
     SYNOPSIS_TEMPERATURE,
     OpenAIClient,
@@ -174,3 +176,55 @@ async def generate_artifacts(
     # Reload with author + editions joined so the route can serialize
     # the AdminBookResponse without lazy loads on a closed session.
     return await catalog_service.get_book_for_admin(session, book_id)
+
+
+async def generate_resonance_line(
+    *,
+    openai_client: OpenAIClient,
+    query: str,
+    book: BookORM,
+) -> str:
+    """Generate the per-search-result resonance line (voice.md §4.3).
+
+    Plan §3.3 M3 / M5: this function is the **only** seam ``search/``
+    uses to invoke LLM generation. ``search.service`` owns the
+    ``resonance_cache`` table and decides when to call this; this
+    function is **stateless** with respect to the catalog DB — no
+    reads, no writes — so the same call can be made for any
+    ``(query, book)`` pair without setup.
+
+    Inputs:
+        * ``openai_client`` — the shared per-workflow wrapper.
+        * ``query`` — the (already normalized) search query.
+        * ``book`` — a hydrated ``BookORM`` whose ``.author`` relation
+          is loaded; the prompt embeds ``book.title`` and
+          ``book.author.name`` verbatim.
+
+    Errors:
+        * Upstream OpenAI failure → ``ApiError(502, "openai resonance
+          failed: ...")``, matching the ``generate_artifacts`` pattern
+          (truncated detail; the search route then surfaces the 502).
+        * Empty/whitespace-only response → ``ApiError(502, ...)`` —
+          we never persist an empty resonance line into the cache.
+    """
+    try:
+        line = await openai_client.chat(
+            model=GENERATION_MODEL,
+            system=prompts.RESONANCE_LINE_SYSTEM_PROMPT,
+            user=prompts.resonance_line_user_prompt(
+                query=query,
+                title=book.title,
+                author=book.author.name,
+            ),
+            temperature=RESONANCE_LINE_TEMPERATURE,
+            max_tokens=RESONANCE_LINE_MAX_TOKENS,
+        )
+    except (OpenAIError, APIError, ValueError) as exc:
+        raise ApiError(
+            502, f"openai resonance failed: {_short(str(exc))}"
+        ) from exc
+
+    line = line.strip()
+    if not line:
+        raise ApiError(502, "openai resonance failed: empty response")
+    return line

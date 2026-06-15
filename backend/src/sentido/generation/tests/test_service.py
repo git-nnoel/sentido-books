@@ -469,3 +469,107 @@ class TestGenerateArtifactsRetry:
         )
         assert result.synopsis is not None
         assert fast_sleep[:1] == [1.0]
+
+
+# ---------------------------------------------------------------------------
+# generate_resonance_line — the public seam search.service consumes.
+# ---------------------------------------------------------------------------
+
+
+_RESONANCE_LINE_TEXT = (
+    "Meursault não chora; a recusa de sentir é a sua forma de existir."
+)
+
+
+class _ResonanceFakeClient(_FakeOpenAIClient):
+    """Variant that routes resonance prompts to a canned line.
+
+    The base ``_FakeOpenAIClient`` only handles synopsis + profile
+    prompts; the resonance prompt sits in a third bucket keyed by the
+    §4.3 system message text.
+    """
+
+    def __init__(
+        self,
+        *,
+        resonance_line: str = _RESONANCE_LINE_TEXT,
+        raise_on_chat: Exception | None = None,
+    ) -> None:
+        super().__init__()
+        self._resonance_line = resonance_line
+        self._raise_on_chat = raise_on_chat
+
+    async def chat(self, **kwargs: Any) -> str:
+        self.chat_calls.append(kwargs)
+        if self._raise_on_chat is not None:
+            raise self._raise_on_chat
+        system = kwargs["system"]
+        if "ressoa" in system.lower():
+            return self._resonance_line
+        return await super().chat(**kwargs)
+
+
+class TestGenerateResonanceLine:
+    async def test_calls_openai_with_voice_prompt(
+        self,
+        test_session: AsyncSession,
+        seeded_book: BookORM,
+    ) -> None:
+        fake = _ResonanceFakeClient()
+        # Refresh to pick up the author relationship.
+        await test_session.refresh(seeded_book, attribute_names=["author"])
+
+        line = await generation_service.generate_resonance_line(
+            openai_client=fake,  # type: ignore[arg-type]
+            query="solidão que não dói",
+            book=seeded_book,
+        )
+
+        assert line == _RESONANCE_LINE_TEXT
+        assert len(fake.chat_calls) == 1
+        call = fake.chat_calls[0]
+        # The §4.3 voice prompt body is shared between system and user
+        # messages (the prompts.py template is one block; substitution
+        # produces the user-facing rendering). Both messages mention
+        # the "ressoa" verb that anchors the §4.3 instruction.
+        assert "ressoa" in call["system"].lower()
+        # User prompt carries the rendered query + book metadata.
+        user = call["user"]
+        assert "solidão que não dói" in user
+        assert seeded_book.title in user
+        assert seeded_book.author.name in user
+        # Per-call params match plan §7.1.
+        assert call["temperature"] == 0.6
+        assert call["max_tokens"] == 80
+
+    async def test_502_on_openai_error(
+        self,
+        test_session: AsyncSession,
+        seeded_book: BookORM,
+    ) -> None:
+        await test_session.refresh(seeded_book, attribute_names=["author"])
+        fake = _ResonanceFakeClient(raise_on_chat=_rate_limit_error("rate"))
+        with pytest.raises(ApiError) as exc:
+            await generation_service.generate_resonance_line(
+                openai_client=fake,  # type: ignore[arg-type]
+                query="solidão",
+                book=seeded_book,
+            )
+        assert exc.value.status_code == 502
+        assert "openai resonance failed" in exc.value.detail
+
+    async def test_502_on_empty_response(
+        self,
+        test_session: AsyncSession,
+        seeded_book: BookORM,
+    ) -> None:
+        await test_session.refresh(seeded_book, attribute_names=["author"])
+        fake = _ResonanceFakeClient(resonance_line="   ")
+        with pytest.raises(ApiError) as exc:
+            await generation_service.generate_resonance_line(
+                openai_client=fake,  # type: ignore[arg-type]
+                query="solidão",
+                book=seeded_book,
+            )
+        assert exc.value.status_code == 502
+        assert "empty" in exc.value.detail

@@ -106,7 +106,16 @@ See plan §3.1. Top level under `src/sentido/`:
   single transaction. Exposed via `POST /v1/admin/books/{id}/generate`
   (admin auth). Books land with `embedding_status='done'` and
   `profile_status='pending'` for curator approval.
-- **B5 — publish + curator approval.** Next. `PUT /v1/admin/books/{id}`
-  with field-level validation; `POST /v1/admin/books/{id}/publish`
-  with the embedding/profile gates; public `GET /v1/books/{slug}`.
-- See plan §9 for the rest of Phase 0.
+- **B5 — publish + curator approval + public reads + semantic search.**
+  Done. `PUT /v1/admin/books/{id}` (partial update with `extra="forbid"`),
+  `POST /v1/admin/books/{id}/publish` (single-call approve + publish
+  with the embedding/profile gates), public `GET /v1/books/{slug}`
+  (with pgvector-similarity `related_books`), and `POST /v1/search`
+  (query embedding + pgvector cosine ranking + lazy
+  `resonance_cache` lookup keyed by `sha256(normalized_query || book_id)`).
+  Resonance lines are generated via the lone
+  `generation.service.generate_resonance_line` seam so the M3 boundary
+  stays clean.
+- **Phase 0 complete; Phase 1 next.** See plan §10 for the deltas
+  over Phase 0 (admin list endpoint, author pages, collections, Google
+  Books fallback, structured logging).

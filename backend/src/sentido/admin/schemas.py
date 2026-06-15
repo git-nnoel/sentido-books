@@ -16,7 +16,7 @@ import datetime as dt
 import uuid
 from typing import Literal
 
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from sentido.catalog.models import BookORM
 from sentido.catalog.schemas import (
@@ -24,10 +24,11 @@ from sentido.catalog.schemas import (
     BookDetailResponse,
     EditionResponse,
     EmotionalProfile,
+    NarrativePace,
 )
 from sentido.ingestion.schemas import IngestRequest
 
-__all__ = ["AdminBookResponse", "IngestRequest"]
+__all__ = ["AdminBookResponse", "BookEditRequest", "IngestRequest"]
 
 
 EmbeddingStatus = Literal["pending", "done"]
@@ -103,3 +104,48 @@ class AdminBookResponse(BookDetailResponse):
             created_at=book.created_at,
             updated_at=book.updated_at,
         )
+
+
+class BookEditRequest(BaseModel):
+    """Partial-update request body for ``PUT /v1/admin/books/{id}`` (plan §5.2).
+
+    All fields are optional — missing keys mean "do not change". Unknown
+    keys are rejected with 422 via ``extra="forbid"`` (matching the
+    plan's "Other fields rejected with 422" requirement). An all-empty
+    body is rejected with a 400 (via ``ValueError``) by the
+    :meth:`_require_at_least_one_field` validator.
+
+    The publish gate ("setting ``published=true`` requires
+    ``profile_status=approved`` and ``embedding_status=done``") is NOT
+    enforced here — it runs against the post-patch state inside
+    :func:`sentido.catalog.service.update_book` so that a single PATCH
+    can both approve and publish atomically.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    original_title: str | None = None
+    synopsis: str | None = None
+    emotional_profile: EmotionalProfile | None = None
+    atmosphere_tags: list[str] | None = None
+    narrative_pace: NarrativePace | None = None
+    cover_url: str | None = None
+    year_published: int | None = None
+    profile_status: Literal["pending", "approved", "rejected"] | None = None
+    published: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "BookEditRequest":
+        """Reject an all-empty patch (no fields set by the caller).
+
+        Pydantic v2 does not differentiate "field omitted" from "field
+        set to None" on the validated instance, so this validator
+        inspects ``model_fields_set`` — the set of keys actually present
+        in the incoming JSON. If none were present, the patch carries
+        no instruction and we surface a 400 via the global handler
+        (``ValueError`` → ``{"detail": "no fields to update"}``).
+        """
+        if not self.model_fields_set:
+            raise ValueError("no fields to update")
+        return self

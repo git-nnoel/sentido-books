@@ -18,8 +18,9 @@ boundary (``admin.service``/``ingestion.service``) owns the single
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -301,3 +302,131 @@ async def get_book_for_admin(session: AsyncSession, book_id: uuid.UUID) -> BookO
     if book is None:
         raise ApiError(404, "book not found")
     return book
+
+
+# Fields that the admin PATCH may set on a BookORM. Listed explicitly
+# rather than derived from the request schema so a future schema change
+# cannot accidentally widen what the service is willing to write —
+# adding a field here is a conscious step.
+_PATCHABLE_BOOK_FIELDS = frozenset(
+    {
+        "title",
+        "original_title",
+        "synopsis",
+        "emotional_profile",
+        "atmosphere_tags",
+        "narrative_pace",
+        "cover_url",
+        "year_published",
+        "profile_status",
+        "published",
+    }
+)
+
+
+async def update_book(
+    session: AsyncSession,
+    book_id: uuid.UUID,
+    patch: dict[str, Any],
+) -> BookORM:
+    """Apply a partial update to a book row (plan §5.2).
+
+    The caller (admin route) is expected to pass the result of
+    ``BookEditRequest.model_dump(exclude_unset=True)`` so that "field
+    not in the patch" and "field explicitly set to None" are
+    distinguishable — keys present here are written, even when the
+    value is ``None``.
+
+    Publish gate (plan §5.2 / D4): the *post-patch* state must satisfy
+    ``profile_status == "approved"`` AND ``embedding_status == "done"``
+    if ``published`` is True. This allows a single PATCH that both
+    approves and publishes a book in one call (used by
+    :func:`sentido.admin.service.publish_book`). The check runs on the
+    pending values before commit so a violating patch never lands.
+
+    Raises:
+        ApiError 404: book id not found.
+        ApiError 422: publish gate violated.
+    """
+    book = await get_book_for_admin(session, book_id)
+
+    # ``emotional_profile`` arrives as a Pydantic model when validated
+    # via ``BookEditRequest``; serialize it to dict for the JSONB column.
+    # Other complex fields (list, scalars) round-trip as-is.
+    for key, value in patch.items():
+        if key not in _PATCHABLE_BOOK_FIELDS:
+            # Defensive: BookEditRequest has extra="forbid" so this is
+            # unreachable from the HTTP path. Guard anyway so that
+            # callers passing a hand-built dict cannot reach unrelated
+            # ORM attributes.
+            raise ApiError(422, f"field not editable: {key}")
+        if key == "emotional_profile" and value is not None and hasattr(value, "model_dump"):
+            value = value.model_dump()
+        setattr(book, key, value)
+
+    # Publish gate against the *post-patch* state.
+    if book.published and (
+        book.profile_status != "approved" or book.embedding_status != "done"
+    ):
+        raise ApiError(
+            422,
+            "cannot publish: profile not approved or embedding missing",
+        )
+
+    book.updated_at = dt.datetime.now(dt.UTC)
+
+    await session.commit()
+    return await get_book_for_admin(session, book_id)
+
+
+async def get_published_book_by_slug(session: AsyncSession, slug: str) -> BookORM:
+    """Load a published BookORM by slug with author + editions joined.
+
+    Plan §5.1 / D4: only books with ``published=True`` are visible to
+    the public surface. Unpublished slugs (or unknown slugs) return
+    404 — the same response — so the surface doesn't leak existence.
+    """
+    stmt = (
+        select(BookORM)
+        .where(BookORM.slug == slug)
+        .where(BookORM.published.is_(True))
+        .options(selectinload(BookORM.author), selectinload(BookORM.editions))
+    )
+    book = await session.scalar(stmt)
+    if book is None:
+        raise ApiError(404, "book not found")
+    return book
+
+
+async def find_related_books(
+    session: AsyncSession,
+    book: BookORM,
+    limit: int = 8,
+) -> list[BookORM]:
+    """Return the most semantically similar published books.
+
+    Plan §5.1: ``related_books`` is computed via pgvector cosine
+    similarity against the input book's embedding, excluding the
+    book itself, limited to 8 by default. Books with no embedding
+    are skipped (they can't be ranked). If the input book itself has
+    no embedding, returns ``[]``.
+
+    Uses pgvector's cosine-distance operator (``<=>``) through
+    :meth:`pgvector.sqlalchemy.Vector.cosine_distance`. The plan §4.1
+    ``books_embedding_idx`` ivfflat index with ``vector_cosine_ops``
+    covers this query.
+    """
+    if book.embedding is None:
+        return []
+
+    stmt = (
+        select(BookORM)
+        .where(BookORM.id != book.id)
+        .where(BookORM.published.is_(True))
+        .where(BookORM.embedding.is_not(None))
+        .order_by(BookORM.embedding.cosine_distance(book.embedding))
+        .limit(limit)
+        .options(selectinload(BookORM.author))
+    )
+    result = await session.scalars(stmt)
+    return list(result.all())

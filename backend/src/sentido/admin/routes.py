@@ -14,12 +14,13 @@ the convention.
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentido.admin import service as admin_service
-from sentido.admin.schemas import AdminBookResponse, IngestRequest
+from sentido.admin.schemas import AdminBookResponse, BookEditRequest, IngestRequest
 from sentido.generation.clients import OpenAIClient
 from sentido.generation.schemas import GenerationRequest
 from sentido.shared.auth import require_admin
@@ -40,7 +41,7 @@ router = APIRouter(
 async def ingest_book(
     body: IngestRequest,
     request: Request,
-    session: AsyncSession = Depends(get_session),
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> AdminBookResponse:
     """Ingest a book from Open Library by ISBN (plan §5.2).
 
@@ -68,8 +69,8 @@ async def ingest_book(
 async def generate_book_artifacts(
     book_id: uuid.UUID,
     request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
     body: GenerationRequest | None = None,
-    session: AsyncSession = Depends(get_session),  # noqa: B008 — FastAPI idiom
 ) -> AdminBookResponse:
     """Generate synopsis + emotional profile + embedding (plan §5.2).
 
@@ -91,4 +92,52 @@ async def generate_book_artifacts(
         book_id=book_id,
         regenerate=payload.regenerate,
     )
+    return AdminBookResponse.from_orm(book)
+
+
+@router.put(
+    "/books/{book_id}",
+    response_model=AdminBookResponse,
+    status_code=200,
+)
+async def edit_book(
+    book_id: uuid.UUID,
+    body: BookEditRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminBookResponse:
+    """Partial update of a book (plan §5.2).
+
+    Body shape: any subset of the curator-editable fields. Unknown
+    fields → 422 (Pydantic's ``extra="forbid"``). Empty body → 400
+    ("no fields to update"). Setting ``published=true`` requires the
+    post-patch state to satisfy ``profile_status=approved`` AND
+    ``embedding_status=done`` — otherwise the service raises 422.
+
+    ``model_dump(exclude_unset=True)`` is what crosses the route →
+    service boundary so "field missing" stays distinct from "field
+    explicitly set to None" (the latter is a valid clear operation).
+    """
+    patch_dict = body.model_dump(exclude_unset=True)
+    book = await admin_service.update_book(session, book_id, patch_dict)
+    return AdminBookResponse.from_orm(book)
+
+
+@router.post(
+    "/books/{book_id}/publish",
+    response_model=AdminBookResponse,
+    status_code=200,
+)
+async def publish_book(
+    book_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminBookResponse:
+    """Approve + publish a book in one call (plan §5.2).
+
+    Equivalent to ``PUT /v1/admin/books/{id}`` with body
+    ``{"profile_status": "approved", "published": true}``. The publish
+    gate inside ``catalog.service.update_book`` returns 422 if the
+    embedding is still pending — the curator must regenerate before
+    publishing in that case.
+    """
+    book = await admin_service.publish_book(session, book_id)
     return AdminBookResponse.from_orm(book)

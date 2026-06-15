@@ -15,10 +15,12 @@ auto-trigger generation after ingest) without changing the route.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sentido.catalog import service as catalog_service
 from sentido.catalog.models import BookORM
 from sentido.generation import service as generation_service
 from sentido.generation.clients import OpenAIClient
@@ -59,4 +61,37 @@ async def generate_book_artifacts(
         openai_client=openai_client,
         book_id=book_id,
         regenerate=regenerate,
+    )
+
+
+async def update_book(
+    session: AsyncSession,
+    book_id: uuid.UUID,
+    patch: dict[str, Any],
+) -> BookORM:
+    """Apply a partial update to a book row (plan §5.2).
+
+    Thin passthrough to :func:`sentido.catalog.service.update_book`.
+    The admin module owns the workflow boundary so future curator
+    actions (audit logging, post-update notifications) hang off this
+    function without changing the route.
+    """
+    return await catalog_service.update_book(session, book_id, patch)
+
+
+async def publish_book(session: AsyncSession, book_id: uuid.UUID) -> BookORM:
+    """Approve + publish a book in one call (plan §5.2).
+
+    Equivalent to ``PUT /v1/admin/books/{id}`` with body
+    ``{"profile_status": "approved", "published": true}``. The publish
+    gate inside :func:`sentido.catalog.service.update_book` enforces
+    that ``embedding_status == "done"``; if the embedding is still
+    pending the call returns 422 (the gate uses the post-patch state,
+    so a single PATCH approving + publishing is allowed when the
+    embedding is already present).
+    """
+    return await catalog_service.update_book(
+        session,
+        book_id,
+        {"profile_status": "approved", "published": True},
     )
