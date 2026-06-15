@@ -114,7 +114,13 @@ function toFormValues(book: AdminBook): FormValues {
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type EditFormAction = (id: string, formData: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
+/**
+ * The action receives only `formData` — the book id is pre-bound by the
+ * parent server component (`publishAction.bind(null, book.id)`). This
+ * lets Next.js's RSC layer serialize the action correctly across the
+ * server/client boundary.
+ */
+export type EditFormAction = (formData: FormData) => Promise<{ ok: true } | { ok: false; error: string }>;
 
 type EditFormProps = {
   book: AdminBook;
@@ -156,7 +162,7 @@ export function EditForm({ book, action, submitLabel, pendingLabel }: EditFormPr
     }
 
     startTransition(async () => {
-      const result = await action(book.id, data);
+      const result = await action(data);
       if (!result.ok) {
         setServerError(`não foi possível salvar. ${result.error}`);
       }

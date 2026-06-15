@@ -74,11 +74,18 @@ export default async function AdminBookEditorPage({ params }: PageProps) {
     book.embedding_status === 'done' && book.profile_status !== 'approved';
   const isPublished = book.published;
 
-  // Server-bound actions — pre-bind the bookId so client islands don't have to.
-  const generateBound = async () => generateAction(book.id, false);
-  const regenerateBound = async () => regenerateAction(book.id);
-  const publishBound = async (id: string, data: FormData) => publishAction(id, data);
-  const updateBound = async (id: string, data: FormData) => updateAction(id, data);
+  // Server-bound actions. `Function.prototype.bind` on a server action
+  // returns ANOTHER server action — Next.js's RSC layer recognizes the
+  // marker and can serialize the bound reference across the
+  // server/client boundary. Wrapping a server action in an inline arrow
+  // function (e.g. `async () => generateAction(...)`) breaks this — the
+  // arrow is treated as a plain function and triggers the "Functions
+  // cannot be passed directly to Client Components unless marked with
+  // 'use server'" error.
+  const generateBound = generateAction.bind(null, book.id, false);
+  const regenerateBound = regenerateAction.bind(null, book.id);
+  const publishBound = publishAction.bind(null, book.id);
+  const updateBound = updateAction.bind(null, book.id);
 
   return (
     <div className="mx-auto w-full max-w-content">
