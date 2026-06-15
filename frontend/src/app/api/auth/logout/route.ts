@@ -8,5 +8,12 @@ import { clearAdminToken } from '@/lib/auth/cookies';
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   clearAdminToken();
-  return NextResponse.redirect(new URL('/admin/login', request.url), 303);
+  // Build the redirect from the Host header so accessing the app from a
+  // LAN IP doesn't bounce back to localhost (see /api/auth/route.ts for
+  // the same pattern + rationale).
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost ?? request.headers.get('host');
+  const protocol = request.headers.get('x-forwarded-proto') ?? 'http';
+  const base = host ? `${protocol}://${host}` : request.url;
+  return NextResponse.redirect(new URL('/admin/login', base), 303);
 }

@@ -69,12 +69,10 @@ export async function ingestAction(
     throw err;
   }
 
-  // Success — round-trip the id, slug, and title via query params so the
-  // same page can render the success state without a second fetch.
-  const params = new URLSearchParams({
-    ok: book.id,
-    slug: book.slug,
-    title: book.title,
-  });
-  redirect(`/admin/novo?${params.toString()}`);
+  // Success — send the curator straight to the book editor where they
+  // can generate the profile, approve, and publish via UI buttons.
+  // (The old behavior was to render a curl-chain success state on this
+  //  same page; F5 made that workflow UI-driven so the curl block is
+  //  no longer the recommended path.)
+  redirect(`/admin/livro/${book.id}`);
 }

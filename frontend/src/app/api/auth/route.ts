@@ -14,7 +14,17 @@ import { setAdminToken, clearAdminToken } from '@/lib/auth/cookies';
 function resolveRedirect(request: NextRequest, target: string): URL {
   // Relative paths only — never honor an absolute URL provided as `next`.
   const safe = target.startsWith('/') && !target.startsWith('//') ? target : '/admin';
-  return new URL(safe, request.url);
+
+  // Build the absolute redirect URL from the Host header (what the browser
+  // actually connected to) rather than request.url (what Next.js's dev
+  // server thinks its hostname is). Without this, accessing the app via a
+  // LAN IP — e.g. 192.168.x.x — produces a redirect back to localhost.
+  // `x-forwarded-*` are honored when behind a proxy.
+  const forwardedHost = request.headers.get('x-forwarded-host');
+  const host = forwardedHost ?? request.headers.get('host');
+  const protocol = request.headers.get('x-forwarded-proto') ?? 'http';
+  const base = host ? `${protocol}://${host}` : request.url;
+  return new URL(safe, base);
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -52,5 +62,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
 export async function DELETE(request: NextRequest): Promise<NextResponse> {
   clearAdminToken();
-  return NextResponse.redirect(new URL('/admin/login', request.url), 303);
+  return NextResponse.redirect(resolveRedirect(request, '/admin/login'), 303);
 }

@@ -1,7 +1,7 @@
 /**
  * Public semantic search.
  *
- * Per backend §5 — POST /v1/search with `{query, limit}` returns
+ * Per backend §5 — POST /v1/search with `{q, limit}` returns
  * `{query, results: SearchResult[]}`. Each result includes a
  * resonance_line generated against the user's query and the book.
  *
@@ -18,7 +18,7 @@ export function semanticSearch(query: string, limit = 12): Promise<SearchRespons
     '/v1/search',
     {
       method: 'POST',
-      body: { query, limit },
+      body: { q: query, limit },
       cache: 'no-store',
     },
     SearchResponseSchema,
