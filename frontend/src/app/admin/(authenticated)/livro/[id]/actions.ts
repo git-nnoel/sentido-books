@@ -134,6 +134,9 @@ export async function generateAction(
   }
   revalidatePath(path);
   revalidatePath('/admin');
+  // Regenerating changes the book's embedding, which shifts related-book
+  // ranking on every other published book's page. Bust the whole family.
+  revalidatePath('/livro/[slug]', 'page');
   return { ok: true };
 }
 
@@ -157,6 +160,9 @@ export async function updateAction(
   }
   revalidatePath(path);
   revalidatePath('/admin');
+  // Editing synopsis/atmosphere/etc. on a published book changes what
+  // its public page renders. Bust the family so the next visit reflects.
+  revalidatePath('/livro/[slug]', 'page');
   return { ok: true };
 }
 
@@ -196,6 +202,12 @@ export async function publishAction(
 
   revalidatePath(path);
   revalidatePath('/admin');
+  // Publishing a new book changes the related-books list for EVERY other
+  // published book (pgvector cosine similarity), so we have to bust the
+  // ISR cache for the entire /livro/[slug] route family — not just the
+  // page we just published. Next.js supports invalidating a dynamic
+  // route's whole family via the second arg `'page'`.
+  revalidatePath('/livro/[slug]', 'page');
   return { ok: true };
 }
 
