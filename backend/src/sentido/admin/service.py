@@ -21,7 +21,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentido.catalog import service as catalog_service
-from sentido.catalog.models import BookORM
+from sentido.catalog.models import BookORM, CollectionORM
 from sentido.generation import service as generation_service
 from sentido.generation.clients import OpenAIClient
 from sentido.ingestion import service as ingestion_service
@@ -116,4 +116,77 @@ async def publish_book(session: AsyncSession, book_id: uuid.UUID) -> BookORM:
         session,
         book_id,
         {"profile_status": "approved", "published": True},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Collections — thin passthrough wrappers (plan §14.2 / §14.5)
+# ---------------------------------------------------------------------------
+#
+# Each wrapper mirrors the ingest/generate/update pattern above: the
+# admin module stays the only entry point for curator workflows (M4) so
+# future extensions (audit logging, notifications) hang off these
+# functions without changing the routes. The catalog service owns the
+# queries and transactions (M8).
+
+
+async def create_collection(
+    session: AsyncSession,
+    *,
+    title: str,
+    description: str | None,
+) -> CollectionORM:
+    """Create an editorial collection (plan §14.2)."""
+    return await catalog_service.create_collection(
+        session, title=title, description=description
+    )
+
+
+async def update_collection(
+    session: AsyncSession,
+    collection_id: uuid.UUID,
+    patch: dict[str, Any],
+) -> CollectionORM:
+    """Partial update of a collection (plan §14.2)."""
+    return await catalog_service.update_collection(session, collection_id, patch)
+
+
+async def delete_collection(
+    session: AsyncSession, collection_id: uuid.UUID
+) -> None:
+    """Delete a collection; cascades to its book links (plan §14.2)."""
+    await catalog_service.delete_collection(session, collection_id)
+
+
+async def list_collections(
+    session: AsyncSession,
+    *,
+    status_filter: str,
+    limit: int,
+    offset: int,
+) -> tuple[list[CollectionORM], int]:
+    """List collections with a status filter (plan §14.2)."""
+    return await catalog_service.list_admin_collections(
+        session,
+        status_filter=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def get_collection(
+    session: AsyncSession, collection_id: uuid.UUID
+) -> CollectionORM:
+    """Load a collection (all books, incl. unpublished — D10) (plan §14.2)."""
+    return await catalog_service.get_collection_for_admin(session, collection_id)
+
+
+async def replace_collection_books(
+    session: AsyncSession,
+    collection_id: uuid.UUID,
+    book_ids: list[uuid.UUID],
+) -> CollectionORM:
+    """Replace the ordered book list in one transaction (plan §14.2)."""
+    return await catalog_service.replace_collection_books(
+        session, collection_id, book_ids
     )

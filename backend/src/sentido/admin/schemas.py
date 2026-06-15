@@ -16,7 +16,7 @@ import datetime as dt
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sentido.catalog.models import BookORM
 from sentido.catalog.schemas import (
@@ -31,7 +31,13 @@ from sentido.ingestion.schemas import IngestRequest
 __all__ = [
     "AdminBookListResponse",
     "AdminBookResponse",
+    "AdminCollection",
+    "AdminCollectionBook",
+    "AdminCollectionListResponse",
     "BookEditRequest",
+    "CollectionBooksReplaceRequest",
+    "CollectionCreateRequest",
+    "CollectionEditRequest",
     "IngestRequest",
 ]
 
@@ -168,3 +174,120 @@ class AdminBookListResponse(BaseModel):
 
     books: list[AdminBookResponse]
     total: int
+
+
+# ---------------------------------------------------------------------------
+# Collections — admin DTOs (plan §14.2 / §14.4)
+# ---------------------------------------------------------------------------
+
+
+class AdminCollectionBook(BaseModel):
+    """A book entry inside an admin collection detail (plan §14.4).
+
+    Carries the curator-facing shape: the book ``id`` (admin URLs use
+    UUIDs, D5), its ``position`` in the collection, and its ``published``
+    status so the curator knows what readers will actually see (D10).
+    This is distinct from the public ``RelatedBook`` shape, which never
+    exposes ``id``/``position``/``published``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    slug: str
+    title: str
+    author_name: str
+    position: int
+    published: bool
+
+
+class AdminCollection(BaseModel):
+    """Admin collection shape (plan §14.4).
+
+    Returned by every admin collection endpoint that yields a single
+    collection (create, update, get-by-id, replace-books). ``books``
+    includes ALL books in the collection regardless of publish state
+    (D10) so the curator can compose and reorder drafts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    slug: str
+    title: str
+    description: str | None = None
+    published: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime
+    books: list[AdminCollectionBook] = Field(default_factory=list)
+
+
+class AdminCollectionListResponse(BaseModel):
+    """List payload for ``GET /v1/admin/collections`` (plan §14.2).
+
+    Mirrors :class:`AdminBookListResponse`: the slice of collections
+    matching the status filter plus the unpaginated ``total``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    collections: list[AdminCollection]
+    total: int
+
+
+class CollectionCreateRequest(BaseModel):
+    """Request body for ``POST /v1/admin/collections`` (plan §14.2).
+
+    ``title`` is required (min length 1). ``description`` is optional and
+    nullable. The slug is derived server-side from ``title`` via
+    :func:`sentido.catalog.logic.slugify` (slugs are never user-edited,
+    plan §4.3).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1)
+    description: str | None = None
+
+
+class CollectionEditRequest(BaseModel):
+    """Partial-update body for ``PUT /v1/admin/collections/{id}`` (plan §14.2).
+
+    All fields optional — missing keys mean "do not change". Unknown
+    keys → 422 via ``extra="forbid"``. An all-empty body is rejected by
+    the :meth:`_require_at_least_one_field` validator, mirroring
+    :class:`BookEditRequest`. ``model_dump(exclude_unset=True)`` is what
+    crosses the route → service boundary so "field omitted" stays
+    distinct from "field set to None" (a valid clear of ``description``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    published: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> "CollectionEditRequest":
+        """Reject an all-empty patch (no fields set by the caller).
+
+        Same rationale as :meth:`BookEditRequest._require_at_least_one_field`:
+        Pydantic v2 cannot tell "omitted" from "set to None" on the
+        validated instance, so we inspect ``model_fields_set``.
+        """
+        if not self.model_fields_set:
+            raise ValueError("no fields to update")
+        return self
+
+
+class CollectionBooksReplaceRequest(BaseModel):
+    """Request body for ``PUT /v1/admin/collections/{id}/books`` (plan §14.2).
+
+    The curator UI sends the full ordered list on every save (D9); the
+    service replaces all ``collection_books`` rows transactionally. An
+    empty list is valid and clears the collection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    book_ids: list[uuid.UUID] = Field(default_factory=list)

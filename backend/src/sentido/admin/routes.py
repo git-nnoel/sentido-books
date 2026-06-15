@@ -16,14 +16,20 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentido.admin import service as admin_service
 from sentido.admin.schemas import (
     AdminBookListResponse,
     AdminBookResponse,
+    AdminCollection,
+    AdminCollectionBook,
+    AdminCollectionListResponse,
     BookEditRequest,
+    CollectionBooksReplaceRequest,
+    CollectionCreateRequest,
+    CollectionEditRequest,
     IngestRequest,
 )
 from sentido.generation.clients import OpenAIClient
@@ -183,3 +189,187 @@ async def publish_book(
     """
     book = await admin_service.publish_book(session, book_id)
     return AdminBookResponse.from_orm(book)
+
+
+# ---------------------------------------------------------------------------
+# Collections — admin CRUD (plan §14.2)
+# ---------------------------------------------------------------------------
+
+
+def _collection_to_admin(collection: object) -> AdminCollection:
+    """Build the ``AdminCollection`` DTO from a hydrated CollectionORM.
+
+    Requires that ``collection.book_links`` (with each link's
+    ``book.author``) is eager-loaded — the catalog service does this for
+    every admin collection op. Book entries are ordered by ``position``
+    here in the route so the service can return links in whatever order
+    the query yields. Includes ALL books regardless of publish state
+    (D10); each entry carries its ``published`` flag so the curator
+    knows what readers will see.
+    """
+    links = sorted(
+        collection.book_links,  # type: ignore[attr-defined]
+        key=lambda link: link.position,
+    )
+    books = [
+        AdminCollectionBook(
+            id=link.book.id,
+            slug=link.book.slug,
+            title=link.book.title,
+            author_name=link.book.author.name,
+            position=link.position,
+            published=link.book.published,
+        )
+        for link in links
+    ]
+    return AdminCollection(
+        id=collection.id,  # type: ignore[attr-defined]
+        slug=collection.slug,  # type: ignore[attr-defined]
+        title=collection.title,  # type: ignore[attr-defined]
+        description=collection.description,  # type: ignore[attr-defined]
+        published=collection.published,  # type: ignore[attr-defined]
+        created_at=collection.created_at,  # type: ignore[attr-defined]
+        updated_at=collection.updated_at,  # type: ignore[attr-defined]
+        books=books,
+    )
+
+
+@router.post(
+    "/collections",
+    response_model=AdminCollection,
+    status_code=201,
+)
+async def create_collection(
+    body: CollectionCreateRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminCollection:
+    """Create an editorial collection (plan §14.2).
+
+    The slug is auto-derived from ``title`` server-side. A new
+    collection starts ``published=false`` with no books — the curator
+    composes it via ``PUT /collections/{id}/books`` then publishes via
+    ``PUT /collections/{id}``.
+
+    Auth: gated by the router-level ``Depends(require_admin)``.
+    """
+    collection = await admin_service.create_collection(
+        session, title=body.title, description=body.description
+    )
+    return _collection_to_admin(collection)
+
+
+@router.get(
+    "/collections",
+    response_model=AdminCollectionListResponse,
+    status_code=200,
+)
+async def list_collections(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status: Annotated[
+        Literal["published", "draft", "all"],
+        Query(description="Status filter for the admin collection list."),
+    ] = "all",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminCollectionListResponse:
+    """List collections with a status filter (plan §14.2).
+
+    ``status`` defaults to ``all``. Ordered by ``updated_at DESC``.
+    ``total`` is the unpaginated count of matches. Each collection
+    carries its full book list (incl. unpublished — D10).
+    """
+    collections, total = await admin_service.list_collections(
+        session,
+        status_filter=status,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminCollectionListResponse(
+        collections=[_collection_to_admin(c) for c in collections],
+        total=total,
+    )
+
+
+@router.get(
+    "/collections/{collection_id}",
+    response_model=AdminCollection,
+    status_code=200,
+)
+async def get_collection(
+    collection_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminCollection:
+    """Collection detail for admin (plan §14.2 / D10).
+
+    Returns ALL books in the collection — including unpublished — so the
+    curator can see and reorder drafts. 404 if the id is unknown.
+    """
+    collection = await admin_service.get_collection(session, collection_id)
+    return _collection_to_admin(collection)
+
+
+@router.put(
+    "/collections/{collection_id}",
+    response_model=AdminCollection,
+    status_code=200,
+)
+async def edit_collection(
+    collection_id: uuid.UUID,
+    body: CollectionEditRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminCollection:
+    """Partial update of a collection (plan §14.2).
+
+    Body: any subset of ``{title, description, published}``. Unknown
+    fields → 422 (``extra="forbid"``). Empty body → rejected by the
+    schema validator. ``model_dump(exclude_unset=True)`` crosses the
+    boundary so "field omitted" stays distinct from "set to None"
+    (clearing ``description``). The slug is not re-derived on title edits
+    (slugs are stable, D5).
+    """
+    patch_dict = body.model_dump(exclude_unset=True)
+    collection = await admin_service.update_collection(
+        session, collection_id, patch_dict
+    )
+    return _collection_to_admin(collection)
+
+
+@router.delete(
+    "/collections/{collection_id}",
+    status_code=204,
+)
+async def delete_collection(
+    collection_id: uuid.UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    """Delete a collection (plan §14.2).
+
+    Cascades to ``collection_books`` via the FK constraint. 404 if the
+    id is unknown; 204 with no body on success.
+    """
+    await admin_service.delete_collection(session, collection_id)
+    return Response(status_code=204)
+
+
+@router.put(
+    "/collections/{collection_id}/books",
+    response_model=AdminCollection,
+    status_code=200,
+)
+async def replace_collection_books(
+    collection_id: uuid.UUID,
+    body: CollectionBooksReplaceRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AdminCollection:
+    """Replace the ordered book list in one transaction (plan §14.2 / D9).
+
+    The curator UI sends the full ordered list on every save; the
+    service clears existing links and re-inserts at each id's array
+    index. An empty list clears the collection. 422 with the first
+    missing id if any ``book_id`` is unknown; 404 if the collection
+    itself is unknown.
+    """
+    collection = await admin_service.replace_collection_books(
+        session, collection_id, body.book_ids
+    )
+    return _collection_to_admin(collection)

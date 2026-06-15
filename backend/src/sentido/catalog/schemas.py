@@ -99,3 +99,103 @@ class BookDetailResponse(BaseModel):
     cover_url: str | None = None
     editions: list[EditionResponse] = Field(default_factory=list)
     related_books: list[RelatedBook] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Collections — public DTOs (plan §14.1 / §14.4)
+# ---------------------------------------------------------------------------
+
+
+class CollectionSummary(BaseModel):
+    """Compact collection reference for ``GET /v1/collections`` (plan §14.1).
+
+    The list envelope carries these summaries; the detail endpoint
+    (:class:`CollectionDetail`) extends with the ordered book list.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    title: str
+    description: str | None = None
+
+
+class CollectionListResponse(BaseModel):
+    """Paginated list payload for ``GET /v1/collections`` (plan §14.1).
+
+    ``total`` is the unpaginated count of published collections so the
+    frontend can drive pagination without a second round-trip (mirrors
+    :class:`sentido.admin.schemas.AdminBookListResponse`).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    collections: list[CollectionSummary]
+    total: int
+
+
+class CollectionDetail(CollectionSummary):
+    """Public ``GET /v1/collections/{slug}`` payload (plan §14.1).
+
+    Extends :class:`CollectionSummary` with the ordered list of
+    *published* books (unpublished books are filtered out to match the
+    public-catalog visibility rule, plan §14.1 / D4). ``books`` reuses
+    :class:`RelatedBook` — the same compact shape the rest of the public
+    surface uses for book references.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    books: list[RelatedBook] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Dimension navigation — public DTOs (plan §14.3 / §14.4)
+# ---------------------------------------------------------------------------
+
+# ``ExploreResult`` is the same compact book shape as ``RelatedBook``
+# (plan §14.4 says "reuse the schema, alias if needed"). We alias rather
+# than subclass so the contract documents the intent without a second
+# class body to keep in sync.
+ExploreResult = RelatedBook
+
+ExploreMode = Literal["tag", "emotion", "pace"]
+
+
+class ExploreResponse(BaseModel):
+    """Payload for ``GET /v1/explore`` (plan §14.3).
+
+    ``mode`` echoes the requested discriminator and ``value`` echoes the
+    filter value (the tag string, the emotion axis, or the pace value)
+    so the frontend can render the active-filter chrome from the
+    response alone. Empty results are a 200 with ``results: []`` — never
+    a 404 (plan §14.3).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: ExploreMode
+    value: str
+    results: list[ExploreResult] = Field(default_factory=list)
+    total: int
+
+
+class AtmosphereTagEntry(BaseModel):
+    """A single aggregated atmosphere tag (plan §14.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    count: int
+
+
+class AtmosphereTagsResponse(BaseModel):
+    """Payload for ``GET /v1/explore/tags`` (plan §14.3).
+
+    Drives the ``/explorar`` landing page. Tags are aggregated over
+    published books, ordered by count DESC then name ASC, limited to 50.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tags: list[AtmosphereTagEntry] = Field(default_factory=list)
