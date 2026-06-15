@@ -1,16 +1,15 @@
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { PageColumn } from '@/components/layout/PageColumn';
-import { HairlineDivider } from '@/components/brand/HairlineDivider';
-import { SectionLabel } from '@/components/brand/SectionLabel';
+import { SearchField } from '@/components/brand/SearchField';
 
 /**
- * Phase 0 home shell.
+ * Home page.
  *
- * No search input yet — that lands in F3 with the API client.
- * No catalog grid yet — that lands in Phase 1 with real backend data.
- *
- * The hero uses voice §3.3 copy verbatim.
+ * The product is a search-first surface — the hero is the wordmark + the
+ * voice §3.3 line, then the search field directly beneath. No catalog grid
+ * in v1 (the home is curated and finite per layout §8 — Phase 2 will
+ * introduce editorial sections).
  */
 export default function HomePage() {
   return (
@@ -26,15 +25,10 @@ export default function HomePage() {
             <p className="mt-5 font-body text-body-lg text-text-muted lowercase max-w-prose">
               procure por uma sensação, uma atmosfera, um eco — não por gênero
             </p>
-          </section>
 
-          <HairlineDivider />
-
-          <section>
-            <SectionLabel>EM BREVE</SectionLabel>
-            <p className="mt-5 font-body text-body-md text-text-primary lowercase">
-              o catálogo está sendo semeado
-            </p>
+            <div className="mt-7">
+              <SearchField />
+            </div>
           </section>
         </PageColumn>
       </main>

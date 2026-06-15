@@ -28,6 +28,7 @@ import { EmotionBar } from '@/components/brand/EmotionBar';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { PageColumn } from '@/components/layout/PageColumn';
+import { RelatedCarousel } from '@/components/layout/RelatedCarousel';
 
 type PageProps = {
   params: { slug: string };
@@ -193,6 +194,16 @@ export default async function BookDetailPage({ params }: PageProps) {
                   ))}
                 </div>
               </section>
+            </>
+          ) : null}
+
+          {book.related_books.length > 0 ? (
+            <>
+              <HairlineDivider />
+              <RelatedCarousel
+                items={book.related_books}
+                label="SE ESSE LIVRO RESSOOU, TALVEZ ESTES TAMBÉM"
+              />
             </>
           ) : null}
         </PageColumn>
