@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Wordmark } from '@/components/brand/Wordmark';
 
 /**
@@ -10,9 +11,10 @@ import { Wordmark } from '@/components/brand/Wordmark';
  *   center → "um catálogo afetivo de livros" (voice §3.3 home hero label)
  *   right  → three text links separated by ` · ` — sobre · coleções · admin
  *
- * Links are placeholder anchors for Phase 0 (wired to real routes in Phase 1).
- * They're styled inline rather than via the Button "link" variant because
- * Button is a client component and Footer should stay server.
+ * Link wiring (Phase 2b §16.1): `coleções` → /colecoes, `admin` → /admin/login.
+ * `sobre` stays a placeholder anchor (no page in v1).
+ * Styled inline rather than via the Button "link" variant because Button is a
+ * client component and Footer should stay server.
  *
  * Respects the iOS home indicator via env(safe-area-inset-bottom).
  */
@@ -37,9 +39,9 @@ export function Footer() {
         >
           <FooterLink href="#">sobre</FooterLink>
           <span aria-hidden="true"> · </span>
-          <FooterLink href="#">coleções</FooterLink>
+          <FooterLink href="/colecoes">coleções</FooterLink>
           <span aria-hidden="true"> · </span>
-          <FooterLink href="#">admin</FooterLink>
+          <FooterLink href="/admin/login">admin</FooterLink>
         </nav>
       </div>
     </footer>
@@ -48,11 +50,11 @@ export function Footer() {
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <a
+    <Link
       href={href}
       className="rounded-sm text-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
     >
       {children}
-    </a>
+    </Link>
   );
 }

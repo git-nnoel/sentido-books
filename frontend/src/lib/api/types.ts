@@ -141,6 +141,7 @@ export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
 
 export const CollectionListResponseSchema = z.object({
   collections: z.array(CollectionSummarySchema),
+  total: z.number().int().nonnegative(),
 });
 
 export type CollectionListResponse = z.infer<typeof CollectionListResponseSchema>;
@@ -150,6 +151,44 @@ export const CollectionDetailSchema = CollectionSummarySchema.extend({
 });
 
 export type CollectionDetail = z.infer<typeof CollectionDetailSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dimension navigation (Phase 2b §16.2) — GET /v1/explore?... results.
+// An explore result mirrors RelatedBook exactly (slug, title, author_name,
+// year_published, cover_url); aliased so the explore surface reads clearly and
+// the contract can diverge later without touching RelatedBook.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const ExploreResultSchema = RelatedBookSchema;
+
+export type ExploreResult = z.infer<typeof ExploreResultSchema>;
+
+export const ExploreResponseSchema = z.object({
+  mode: z.string(),
+  value: z.string(),
+  results: z.array(ExploreResultSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type ExploreResponse = z.infer<typeof ExploreResponseSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Atmosphere tag cloud (Phase 2b §16.2) — GET /v1/explore/atmosphere-tags.
+// Each entry pairs the tag name with the number of published books carrying it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const AtmosphereTagEntrySchema = z.object({
+  name: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export type AtmosphereTagEntry = z.infer<typeof AtmosphereTagEntrySchema>;
+
+export const AtmosphereTagsResponseSchema = z.object({
+  tags: z.array(AtmosphereTagEntrySchema),
+});
+
+export type AtmosphereTagsResponse = z.infer<typeof AtmosphereTagsResponseSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin book — admin endpoints return BookDetail plus six extra fields.
@@ -193,6 +232,44 @@ export const AdminBookListResponseSchema = z.object({
 });
 
 export type AdminBookListResponse = z.infer<typeof AdminBookListResponseSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin collections (Phase 2b §16.3) — admin CRUD over editorial collections.
+// Shipped now by F6 so F7 imports them without re-editing this file (decision
+// F8: F6 owns the whole phase's type additions). F6 itself does not render any
+// admin collection UI.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const AdminCollectionBookSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  title: z.string(),
+  author_name: z.string(),
+  position: z.number().int(),
+  published: z.boolean(),
+});
+
+export type AdminCollectionBook = z.infer<typeof AdminCollectionBookSchema>;
+
+export const AdminCollectionSchema = z.object({
+  id: z.string().uuid(),
+  slug: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  published: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  books: z.array(AdminCollectionBookSchema),
+});
+
+export type AdminCollection = z.infer<typeof AdminCollectionSchema>;
+
+export const AdminCollectionListResponseSchema = z.object({
+  collections: z.array(AdminCollectionSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type AdminCollectionListResponse = z.infer<typeof AdminCollectionListResponseSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Health — GET /v1/health.

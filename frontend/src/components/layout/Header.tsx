@@ -10,9 +10,10 @@ import { Wordmark } from '@/components/brand/Wordmark';
  * Mobile  → 3-col grid: [back slot] [wordmark centered] [actions slot]
  * Desktop → flex:        [wordmark left] [nav center-left] [actions right]
  *
- * The desktop nav links are placeholders for Phase 1 — they render disabled
- * with aria-disabled="true" so the visual rhythm is complete without claiming
- * they're functional.
+ * Desktop nav (Phase 2b §16.1): `coleções`, `buscar`, and `explorar` are live
+ * links; `catálogo` stays a disabled placeholder until a catalog browse page
+ * exists (Phase 3). The `/explorar` route ships in F8 — until then Next renders
+ * its not-found page gracefully.
  *
  * Respects the iOS notch via env(safe-area-inset-top).
  */
@@ -47,8 +48,9 @@ export function Header() {
 
         <nav aria-label="navegação principal" className="ml-8 flex items-center gap-5">
           <PlaceholderNavLink>catálogo</PlaceholderNavLink>
-          <PlaceholderNavLink>coleções</PlaceholderNavLink>
-          <PlaceholderNavLink>buscar</PlaceholderNavLink>
+          <NavLink href="/colecoes">coleções</NavLink>
+          <NavLink href="/explorar">explorar</NavLink>
+          <NavLink href="/buscar">buscar</NavLink>
         </nav>
 
         <div className="ml-auto" />
@@ -58,8 +60,22 @@ export function Header() {
 }
 
 /**
- * Phase-0 placeholder link — renders as text-muted, not interactive yet.
- * Wired up to real routes in Phase 1.
+ * Live nav link — text-muted idle, accent on hover, with a brand focus ring.
+ */
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-sm font-body text-body-sm text-text-muted lowercase underline-offset-4 transition-colors duration-fast ease-standard hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {children}
+    </Link>
+  );
+}
+
+/**
+ * Disabled placeholder link — renders as text-muted, not interactive.
+ * `catálogo` stays disabled until a catalog browse page exists (Phase 3).
  */
 function PlaceholderNavLink({ children }: { children: React.ReactNode }) {
   return (
