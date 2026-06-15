@@ -541,14 +541,16 @@ None in v1. Per backend §11 D3.
 
 Single-token bearer.
 
-**Flow:**
+**Flow (Phase 0 — deferred validation):**
 1. Curator visits `/admin/something` without cookie.
 2. `lib/auth/guard.ts` (called in admin route `layout.tsx` from server) redirects to `/admin/login?next=/admin/something`.
 3. Login page: a single password input. On submit, `POST` to `/api/auth` (Next.js route handler).
-4. Route handler validates the input against the backend by calling `GET /v1/admin/books?limit=1` with `Authorization: Bearer {input}`. On `200`, set `httpOnly` cookie `sentido_admin` with the token; on `401`, return `{ error: "token inválido" }`.
+4. Route handler sets the `httpOnly` cookie `sentido_admin` with the submitted token **without upfront validation**. Bad tokens fail on first real action — any admin endpoint returns `401 {"detail": "unauthorized"}` from the backend. The frontend catches that 401, clears the cookie, and redirects back to `/admin/login?next=...&error=token%20inv%C3%A1lido`.
 5. Subsequent requests: server components read the cookie and pass it to `apiFetch`.
 
-**Logout:** `POST /api/auth/logout` clears the cookie and redirects to `/admin/login`.
+**Why deferred:** the original Phase-0 plan was to probe `GET /v1/admin/books?limit=1` on login, but that endpoint is a Phase 1 backend deliverable. Rather than add a Phase 0 probe endpoint just for upfront validation, we accept first-action failure as the validation signal. Phase 1 reintroduces upfront validation against the now-existing admin listing endpoint.
+
+**Logout:** `DELETE /api/auth` clears the cookie and redirects to `/admin/login`.
 
 The admin token is never exposed to the browser JS — it only lives in the `httpOnly` cookie and is attached server-side. Client mutations call `lib/api/admin.ts` functions which either:
 - Run inside a server action (preferred), or
