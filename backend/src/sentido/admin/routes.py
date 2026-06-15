@@ -14,13 +14,18 @@ the convention.
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from sentido.admin import service as admin_service
-from sentido.admin.schemas import AdminBookResponse, BookEditRequest, IngestRequest
+from sentido.admin.schemas import (
+    AdminBookListResponse,
+    AdminBookResponse,
+    BookEditRequest,
+    IngestRequest,
+)
 from sentido.generation.clients import OpenAIClient
 from sentido.generation.schemas import GenerationRequest
 from sentido.shared.auth import require_admin
@@ -31,6 +36,43 @@ router = APIRouter(
     tags=["admin"],
     dependencies=[Depends(require_admin)],
 )
+
+
+@router.get(
+    "/books",
+    response_model=AdminBookListResponse,
+    status_code=200,
+)
+async def list_books(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    status: Annotated[
+        Literal["pending_generation", "pending_approval", "published", "all"],
+        Query(description="Status filter for the admin queue view."),
+    ] = "pending_generation",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminBookListResponse:
+    """List books with admin filters (plan §5.2).
+
+    Backs the admin panel queue view. The default ``status`` is
+    ``pending_generation`` — the curator's most common landing query —
+    and the page is ordered by ``updated_at`` DESC so the most recently
+    touched rows surface first. ``total`` carries the unpaginated count
+    of matches so the panel can render its pagination controls without
+    a second round-trip.
+
+    Auth: gated by the router-level ``Depends(require_admin)``.
+    """
+    books, total = await admin_service.list_books(
+        session,
+        status_filter=status,
+        limit=limit,
+        offset=offset,
+    )
+    return AdminBookListResponse(
+        books=[AdminBookResponse.from_orm(book) for book in books],
+        total=total,
+    )
 
 
 @router.post(

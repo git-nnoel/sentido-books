@@ -28,7 +28,12 @@ from sentido.catalog.schemas import (
 )
 from sentido.ingestion.schemas import IngestRequest
 
-__all__ = ["AdminBookResponse", "BookEditRequest", "IngestRequest"]
+__all__ = [
+    "AdminBookListResponse",
+    "AdminBookResponse",
+    "BookEditRequest",
+    "IngestRequest",
+]
 
 
 EmbeddingStatus = Literal["pending", "done"]
@@ -149,3 +154,17 @@ class BookEditRequest(BaseModel):
         if not self.model_fields_set:
             raise ValueError("no fields to update")
         return self
+
+
+class AdminBookListResponse(BaseModel):
+    """List payload for ``GET /v1/admin/books`` (plan §5.2).
+
+    The page envelope carries the slice of books matching the requested
+    filter plus the *unpaginated* total — the admin panel uses ``total``
+    to drive its pagination controls without a second round-trip.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    books: list[AdminBookResponse]
+    total: int

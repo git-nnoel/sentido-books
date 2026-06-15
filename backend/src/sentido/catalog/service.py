@@ -379,6 +379,59 @@ async def update_book(
     return await get_book_for_admin(session, book_id)
 
 
+async def list_admin_books(
+    session: AsyncSession,
+    *,
+    status_filter: str,
+    limit: int,
+    offset: int,
+) -> tuple[list[BookORM], int]:
+    """Return a slice of books plus the matching total (plan §5.2).
+
+    Filter semantics:
+        * ``pending_generation`` — ``embedding_status == "pending"``
+        * ``pending_approval``  — ``profile_status == "pending"`` AND
+                                  ``embedding_status == "done"``
+        * ``published``         — ``published == true``
+        * ``all``               — no filter
+
+    Any other value raises ``ApiError(400, "invalid status filter")``.
+
+    Ordering is ``updated_at DESC`` so the admin panel queue surfaces
+    the most recently touched books first. ``author`` + ``editions`` are
+    eager-loaded so the route can serialize without lazy-load on a
+    closed session (mirrors :func:`get_book_for_admin`). One query
+    fetches the page, a second runs ``SELECT count(*)`` against the
+    same WHERE clause for ``total``.
+    """
+    base = select(BookORM)
+    if status_filter == "pending_generation":
+        base = base.where(BookORM.embedding_status == "pending")
+    elif status_filter == "pending_approval":
+        base = base.where(BookORM.profile_status == "pending").where(
+            BookORM.embedding_status == "done"
+        )
+    elif status_filter == "published":
+        base = base.where(BookORM.published.is_(True))
+    elif status_filter == "all":
+        pass
+    else:
+        raise ApiError(400, "invalid status filter")
+
+    page_stmt = (
+        base.options(selectinload(BookORM.author), selectinload(BookORM.editions))
+        .order_by(BookORM.updated_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    books = list((await session.scalars(page_stmt)).all())
+
+    count_stmt = select(func.count()).select_from(base.subquery())
+    total = await session.scalar(count_stmt) or 0
+
+    return books, int(total)
+
+
 async def get_published_book_by_slug(session: AsyncSession, slug: str) -> BookORM:
     """Load a published BookORM by slug with author + editions joined.
 

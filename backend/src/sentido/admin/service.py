@@ -79,6 +79,28 @@ async def update_book(
     return await catalog_service.update_book(session, book_id, patch)
 
 
+async def list_books(
+    session: AsyncSession,
+    *,
+    status_filter: str,
+    limit: int,
+    offset: int,
+) -> tuple[list[BookORM], int]:
+    """List books with admin filters (plan §5.2).
+
+    Thin passthrough to :func:`sentido.catalog.service.list_admin_books`
+    — the admin module stays the only entry point for curator workflows
+    (plan §3.3 M4) so future extensions (audit logging, additional
+    filters) hang off this function without changing the route.
+    """
+    return await catalog_service.list_admin_books(
+        session,
+        status_filter=status_filter,
+        limit=limit,
+        offset=offset,
+    )
+
+
 async def publish_book(session: AsyncSession, book_id: uuid.UUID) -> BookORM:
     """Approve + publish a book in one call (plan §5.2).
 
