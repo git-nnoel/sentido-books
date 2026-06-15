@@ -50,6 +50,12 @@ See `decisions §D7` for the rationale and §3.4 for what this rejects.
 
 ### 3.1 Top-level structure
 
+Note: `docker-compose.yml` lives at the **repo root** (one level above the
+tree below) — it orchestrates the backend services (`db` + `api`) and references
+`backend/docker/Dockerfile` as the build target. The `backend/docker/` subfolder
+holds the Dockerfile and is where the production compose + Caddyfile land in
+Phase 1.
+
 ```
 backend/
 ├── pyproject.toml
@@ -57,8 +63,7 @@ backend/
 ├── alembic/
 │   └── versions/
 ├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml          # db + api + caddy
+│   └── Dockerfile
 ├── src/
 │   └── sentido/
 │       ├── __init__.py

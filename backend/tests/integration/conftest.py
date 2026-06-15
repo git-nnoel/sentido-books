@@ -9,7 +9,7 @@ generation's service test in B4 reuses the same ``test_session``).
 **Test-DB strategy** (kept here for proximity to integration tests):
 
 We run integration tests against the same Postgres container that
-``docker/docker-compose.yml`` starts for development, but in a
+the repo-root ``docker-compose.yml`` starts for development, but in a
 **separate database** named ``sentido_test``. Rationale:
 
 - **Why not testcontainers?** It pulls a fresh image per process and

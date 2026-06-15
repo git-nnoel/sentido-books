@@ -1,9 +1,12 @@
-# Local-dev docker-compose for the Sentido backend.
+# Local-dev docker-compose for the Sentido backend services.
 #
-# Brings up `db` (Postgres 16 + pgvector) and `api` (FastAPI/uvicorn
-# with --reload). Run from the `backend/` directory:
+# Scope: db + api only. The frontend ships via Vercel (PRD §7.2) and is
+# not containerized here — run `npm run dev` from `frontend/` separately.
 #
-#     docker compose -f docker/docker-compose.yml up -d
+# Run from the repo root:
+#
+#     docker compose up -d
+#     docker compose exec api alembic upgrade head    # one-shot, first boot
 #
 # Postgres uses the pgvector/pgvector:pg16 image which bundles the
 # `vector` extension; `pgcrypto` ships with Postgres core.
@@ -34,21 +37,21 @@ services:
 
   api:
     build:
-      context: ..
+      context: ./backend
       dockerfile: docker/Dockerfile
     container_name: sentido_api
     depends_on:
       db:
         condition: service_healthy
     env_file:
-      - ../.env
+      - ./backend/.env
     environment:
       PYTHONPATH: /app/src
     volumes:
       # Hot-reload: bind-mount source + alembic so edits on the host
       # take effect without a rebuild. Read-write is fine for dev.
-      - ../src:/app/src
-      - ../alembic:/app/alembic
+      - ./backend/src:/app/src
+      - ./backend/alembic:/app/alembic
     ports:
       - "8000:8000"
     command:

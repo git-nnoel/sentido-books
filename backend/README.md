@@ -10,14 +10,17 @@ modular monolith.
 
 ## Quick start (local dev)
 
+The `docker-compose.yml` lives at the repo root (it orchestrates the
+backend services `db` + `api`). Run docker commands from there.
+
 ### 1. Bring up Postgres
 
 The dev database runs in Docker on host port **5433** to avoid clashing
 with any locally-installed Postgres.
 
 ```bash
-cd backend
-docker compose -f docker/docker-compose.yml up -d db
+# from the repo root
+docker compose up -d db
 ```
 
 The `pgvector/pgvector:pg16` image bundles the `vector` extension;
@@ -53,11 +56,21 @@ reproducible image builds (see the Dockerfile header comment).
 
 ### 4. Apply migrations
 
+If you're running alembic locally (outside compose):
+
 ```bash
 cd backend
 cp .env.example .env   # then edit secrets
 export $(grep -v '^#' .env | xargs)   # or use a tool like direnv
 alembic upgrade head
+```
+
+If you're running everything through compose, run alembic inside the
+`api` container instead (it already has the right `DATABASE_URL`):
+
+```bash
+# from the repo root
+docker compose exec api alembic upgrade head
 ```
 
 ### 5. Verify the database
