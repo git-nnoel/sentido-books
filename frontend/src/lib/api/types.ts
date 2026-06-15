@@ -174,6 +174,27 @@ export const AdminBookSchema = BookDetailSchema.extend({
 export type AdminBook = z.infer<typeof AdminBookSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Admin queue listing — GET /v1/admin/books?status=...&limit=...&offset=...
+// (backend §5.2). Used by the admin queue tables.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const AdminBookListStatusSchema = z.enum([
+  'pending_generation',
+  'pending_approval',
+  'published',
+  'all',
+]);
+
+export type AdminBookListStatus = z.infer<typeof AdminBookListStatusSchema>;
+
+export const AdminBookListResponseSchema = z.object({
+  books: z.array(AdminBookSchema),
+  total: z.number().int().nonnegative(),
+});
+
+export type AdminBookListResponse = z.infer<typeof AdminBookListResponseSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Health — GET /v1/health.
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1,24 +1,28 @@
 /**
- * Admin mutation functions.
+ * Admin mutation + read functions.
  *
  * All functions go through adminApiFetch, which attaches the Bearer token
  * from the server-side cookie. The admin token never reaches the browser JS
  * (frontend plan F4 — server actions only).
  *
- * Phase 0 surface:
+ * Surface:
  *   - ingestBook        — POST /v1/admin/books/ingest
  *   - generateArtifacts — POST /v1/admin/books/{id}/generate
  *   - updateBook        — PUT  /v1/admin/books/{id}
  *   - publishBook       — POST /v1/admin/books/{id}/publish
- *
- * GAP: `listAdminBooks` (GET /v1/admin/books?status=...) is a Phase 1
- * backend deliverable. It will live here when the admin queue tables ship.
- * The login flow uses deferred validation in Phase 0 — see plan §9.2.
+ *   - listAdminBooks    — GET  /v1/admin/books?status=...
+ *   - getAdminBookById  — derived from listAdminBooks (see note below)
  */
 import 'server-only';
 
 import { adminApiFetch } from './client';
-import { AdminBookSchema, type AdminBook } from './types';
+import {
+  AdminBookSchema,
+  AdminBookListResponseSchema,
+  type AdminBook,
+  type AdminBookListResponse,
+  type AdminBookListStatus,
+} from './types';
 
 /**
  * Adds a book to the catalog by ISBN lookup. Lands in
@@ -73,4 +77,48 @@ export function publishBook(bookId: string): Promise<AdminBook> {
     { method: 'POST' },
     AdminBookSchema,
   );
+}
+
+/**
+ * Lists admin books filtered by curation status. Backed by GET
+ * /v1/admin/books (backend §5.2).
+ *
+ *   status:
+ *     - 'pending_generation' → embedding_status='pending'
+ *     - 'pending_approval'   → embedding_status='done' AND profile_status!='approved'
+ *     - 'published'          → published=true
+ *     - 'all'                → no filter
+ */
+export function listAdminBooks(
+  status: AdminBookListStatus,
+  limit = 50,
+  offset = 0,
+): Promise<AdminBookListResponse> {
+  const params = new URLSearchParams({
+    status,
+    limit: String(limit),
+    offset: String(offset),
+  });
+  return adminApiFetch(
+    `/v1/admin/books?${params.toString()}`,
+    { method: 'GET' },
+    AdminBookListResponseSchema,
+  );
+}
+
+/**
+ * Fetches a single admin book by id.
+ *
+ * KNOWN LIMITATION — MVP shim. The backend does not yet expose
+ * `GET /v1/admin/books/{id}`. Until it does, this helper lists the first
+ * 100 books (status='all') and finds the matching id. Returns `null` when
+ * the id is not in that window.
+ *
+ * Phase 2 follow-up for the backend: add `GET /v1/admin/books/{id}` so this
+ * helper can hit it directly. Until then, catalogs over ~100 books may have
+ * detail pages that 404 for older entries.
+ */
+export async function getAdminBookById(id: string): Promise<AdminBook | null> {
+  const { books } = await listAdminBooks('all', 100, 0);
+  return books.find((book) => book.id === id) ?? null;
 }
