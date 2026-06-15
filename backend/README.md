@@ -10,81 +10,84 @@ modular monolith.
 
 ## Quick start (local dev)
 
-The `docker-compose.yml` lives at the repo root (it orchestrates the
-backend services `db` + `api`). Run docker commands from there.
+`docker-compose.yml` lives at the **repo root** and orchestrates the
+backend services (`db` + `migrate` + `api`). The `migrate` service is a
+one-shot that runs `alembic upgrade head` before `api` starts — no
+manual migration step needed.
 
-### 1. Bring up Postgres
-
-The dev database runs in Docker on host port **5433** to avoid clashing
-with any locally-installed Postgres.
+### First boot
 
 ```bash
 # from the repo root
-docker compose up -d db
+make setup     # copies backend/.env.example → backend/.env (no-clobber)
+# edit backend/.env, fill in OPENAI_API_KEY and ADMIN_TOKEN
+make up        # builds + starts db + migrate + api
 ```
 
-The `pgvector/pgvector:pg16` image bundles the `vector` extension;
-`pgcrypto` ships with stock Postgres. Both are enabled by the first
-Alembic migration.
+That's it. Verify:
 
-### 2. Install the Python package (editable + dev tools)
+```bash
+curl http://localhost:8000/v1/health
+# {"status":"ok","version":"1.0.0"}
+```
+
+Day-to-day commands (from repo root):
+
+| Command | What it does |
+|---|---|
+| `make up` | Build + start db + migrate + api |
+| `make down` | Stop all services (volumes preserved) |
+| `make logs` | Tail `api` logs |
+| `make migrate` | Re-run migrations (after editing alembic versions) |
+| `make psql` | Open a psql shell against the dev database |
+| `make shell` | Open a bash shell inside the api container |
+| `make ps` | Status of all services |
+
+### Running alembic / pytest outside compose
+
+If you want to run alembic or pytest directly on the host (no compose
+around them), you'll need a local Python environment:
 
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install --upgrade pip
 pip install -e ".[dev]"
+# Make sure backend/.env exists and the dev db is up:
+docker compose up -d db
+# .env's DATABASE_URL targets localhost:5433 (the host port), which
+# works for this case.
+alembic upgrade head
+pytest
 ```
 
-### 3. Generate the lockfile (recommended before deploying)
+### Lockfile (recommended before deploying)
 
 `pip-tools` produces a deterministic lock for reproducible Docker builds.
-The B1 commit ships **without** `requirements.lock.txt` because the agent
-sandbox lacks pip-tools — generate it locally and commit it:
+The B1 commit ships **without** `requirements.lock.txt` because the
+agent sandbox lacked pip-tools — generate it locally and commit:
 
 ```bash
 cd backend
 pip-compile pyproject.toml -o requirements.lock.txt
-git add requirements.lock.txt && git commit -m "chore: lock backend dependencies"
 ```
 
-Re-run whenever `pyproject.toml` dependencies change.
+Re-run whenever `pyproject.toml` dependencies change. After the lockfile
+exists, switch the Dockerfile install line from `pip install /build`
+to `pip install -r requirements.lock.txt` for reproducible image builds
+(see the Dockerfile header).
 
-After the lockfile exists, switch the Dockerfile install line from
-`pip install /build` back to `pip install -r requirements.lock.txt` for
-reproducible image builds (see the Dockerfile header comment).
-
-### 4. Apply migrations
-
-If you're running alembic locally (outside compose):
+### Verify the schema
 
 ```bash
-cd backend
-cp .env.example .env   # then edit secrets
-export $(grep -v '^#' .env | xargs)   # or use a tool like direnv
-alembic upgrade head
+make psql
+# then in psql:
+\dt
+SELECT 1 FROM books;
+\d books
 ```
 
-If you're running everything through compose, run alembic inside the
-`api` container instead (it already has the right `DATABASE_URL`):
-
-```bash
-# from the repo root
-docker compose exec api alembic upgrade head
-```
-
-### 5. Verify the database
-
-```bash
-psql "postgresql://sentido:sentido@localhost:5433/sentido" \
-  -c "\dt" \
-  -c "SELECT 1 FROM books;" \
-  -c "SELECT 1 FROM authors;" \
-  -c "SELECT 1 FROM resonance_cache;" \
-  -c "\d books"
-```
-
-You should see all five tables (`authors`, `books`, `editions`,
+You should see all six tables (`authors`, `books`, `editions`,
 `collections`, `collection_books`, `resonance_cache`) and the
 `books_embedding_idx` ivfflat index on `books.embedding`.
 

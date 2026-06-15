@@ -1,12 +1,16 @@
 # Local-dev docker-compose for the Sentido backend services.
 #
-# Scope: db + api only. The frontend ships via Vercel (PRD §7.2) and is
-# not containerized here — run `npm run dev` from `frontend/` separately.
+# Scope: db + migrate + api. The frontend ships via Vercel (PRD §7.2) and
+# is not containerized here — run `npm run dev` from `frontend/` separately.
 #
-# Run from the repo root:
+# First boot:
 #
+#     cp backend/.env.example backend/.env
+#     # edit backend/.env, fill in OPENAI_API_KEY and ADMIN_TOKEN
 #     docker compose up -d
-#     docker compose exec api alembic upgrade head    # one-shot, first boot
+#
+# That's it. The `migrate` one-shot runs `alembic upgrade head` before
+# `api` starts, so no manual migration step is needed.
 #
 # Postgres uses the pgvector/pgvector:pg16 image which bundles the
 # `vector` extension; `pgcrypto` ships with Postgres core.
@@ -14,6 +18,29 @@
 # Host port 5433 is used for Postgres (instead of 5432) to avoid
 # colliding with a developer's locally-installed Postgres. The API is
 # exposed on host port 8000.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared anchors — the api and migrate services build the same image and
+# read the same env, with one difference: DATABASE_URL is set here in
+# `environment:` (with the in-compose hostname `db:5432`) so it overrides
+# whatever the user has in their .env. That way users running alembic
+# OUTSIDE compose can keep `localhost:5433` in their .env without breaking
+# the in-compose path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-backend-build: &backend-build
+  build:
+    context: ./backend
+    dockerfile: docker/Dockerfile
+
+x-backend-env: &backend-env
+  env_file:
+    - ./backend/.env
+  environment:
+    # In-container DB URL — service-name DNS, internal port. Overrides
+    # whatever DATABASE_URL the user has set in backend/.env.
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sentido}:${POSTGRES_PASSWORD:-sentido}@db:5432/${POSTGRES_DB:-sentido}
+    PYTHONPATH: /app/src
 
 services:
   db:
@@ -35,18 +62,27 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # One-shot: runs `alembic upgrade head` to the latest revision, then
+  # exits 0. The api service depends on this completing successfully.
+  migrate:
+    <<: [*backend-build, *backend-env]
+    container_name: sentido_migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/alembic:/app/alembic
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
   api:
-    build:
-      context: ./backend
-      dockerfile: docker/Dockerfile
+    <<: [*backend-build, *backend-env]
     container_name: sentido_api
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - ./backend/.env
-    environment:
-      PYTHONPATH: /app/src
+      migrate:
+        condition: service_completed_successfully
     volumes:
       # Hot-reload: bind-mount source + alembic so edits on the host
       # take effect without a rebuild. Read-write is fine for dev.
