@@ -1,5 +1,6 @@
 # Claude Code tooling metadata (per-agent memory; not project source)
-.claude/
+# Anchored to root only — docs/.claude/ is tracked intentionally
+/.claude/
 
 # OS
 .DS_Store
